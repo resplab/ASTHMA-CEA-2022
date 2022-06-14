@@ -1,0 +1,46 @@
+---
+title: "Primatine OTC CEA"
+author: "Joseph & Kate"
+date: '2022-06-14'
+output: html_document
+---
+######################################################################################################
+####### Markov Model for CEA of Primatene OTC compared to Symbicort PRN and HCP management #### 2022 #
+######################################################################################################
+
+# rm(list = ls())  # remove any variables in R's memory
+
+##################################### Model input #########################################
+```{r, Model input, include=false}
+# Model input
+n.t   <- 30                    # time horizon, 30 cycles
+v.n   <- c("H","S1","S2","D")  # the model states: Healthy (H), Sick (S1), Sicker (S2), Dead (D)
+n.s   <- length(v.n)           # the number of health states
+v.M_1 <- c(1, 0, 0, 0)         # everyone begins in the healthy state 
+d.c   <- d.e <- 0.03           # equal discounting of costs and QALYs by 3%
+v.Trt <- c("No Treatment", "Treatment") # store the strategy names
+
+# Transition probabilities (per cycle)
+p.HD    <- 0.005               # probability to die when healthy
+p.HS1   <- 0.15          	     # probability to become sick when healthy
+p.S1H   <- 0.5           	     # probability to become healthy when sick
+p.S1S2  <- 0.105         	     # probability to become sicker when sick
+rr.S1   <- 3             	     # rate ratio of death when sick vs healthy
+rr.S2   <- 10            	     # rate ratio of death when sicker vs healthy 
+r.HD    <- -log(1 - p.HD) 	   # rate of death when healthy
+r.S1D   <- rr.S1 * r.HD  	     # rate of death when sick
+r.S2D   <- rr.S2 * r.HD  	     # rate of death when sicker
+p.S1D   <- 1 - exp(-r.S1D)     # probability to die when sick
+p.S2D   <- 1 - exp(-r.S2D)     # probability to die when sikcer
+ 
+# Cost and utility inputs  
+c.H     <- 2000                # cost of remaining for one cycle healthy
+c.S1    <- 4000                # cost of remaining for one cycle sick
+c.S2    <- 15000               # cost of remaining for one cycle sicker
+c.Trt   <- 12000               # cost of treatment (per cycle)
+
+u.H     <- 1                   # utility when healthy 
+u.S1    <- 0.75                # utility when sick 
+u.S2    <- 0.5                 # utility when sicker 
+u.Trt   <- 0.95                # utility when being treated
+```
