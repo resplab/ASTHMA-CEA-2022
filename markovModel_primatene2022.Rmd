@@ -8,39 +8,218 @@ output: html_document
 ####### Markov Model for CEA of Primatene OTC compared to Symbicort PRN and HCP management #### 2022 #
 ######################################################################################################
 
-# rm(list = ls())  # remove any variables in R's memory
+Objective: Cost-effectiveness of over the counter epinephrine vs. budesonide-formoterol in individuals with asthma not managed by a healthcare provider 
+Study Population: Uninsured adults with asthma in the US using inhaler 2x weekly 
+Setting and Location: US 
+Study Perspective: US Societal 
+Comparators: OTC Inhaled bud-form vs Inhaled epinephrine vs no OTC option
+Model cycle: 1 week 
+Time horizon: lifetime
+Discount rate: 3% for both costs and QALYs 
+Currency: 2021 USD 
+Baseline age: 23 years old
+
+Outcomes:  
+- Longevity effects: Asthma-related mortality following sever exacerbation, background mortality from US life tables 
+- Health-related quality-of-life effects: Utility of non-exacerbation, disutility of severe exacerbation 
+Costs: 
+- Medical costs: background direct medical costs, severe exacerbation medical costs
+- Treatment costs: unit cost of Bud-form, Epi OTC (Primatine mist) 
+- Time costs: Patient and caregiver time costs 
+- Productivty loss: Presenteeism, absenteeism, unpaid work 
+
+Assumptions 
+1. No health insurance and inhaler use twice weekly (2x per week) 
+2. Severe exacerbations require ED visit or hospitalization 
+3. Patients who received ED care or Hospitalization were assumed to have been referred for care by HCP 
+4. Patients under HCP management received daily ICS and as need albuterol (SABA) 
+5. Risk reductions in severe exacerbations and asthma-related mortality were modeled for patients receiving healthcare provider management and PRN budesonide-formoterol OTC, with risk increases in asthma fatality modeled for patients receiving PRN inhaled epinephrine OTC 
+6. Variable adherence to HCP management 
+
+######################################################################################################
+#rm(list = ls())  # remove any variables in R's memory
 
 ##################################### Model input #########################################
 ```{r, Model input, include=false}
-# Model input
-n.t   <- 30                    # time horizon, 30 cycles
-v.n   <- c("H","S1","S2","D")  # the model states: Healthy (H), Sick (S1), Sicker (S2), Dead (D)
-n.s   <- length(v.n)           # the number of health states
-v.M_1 <- c(1, 0, 0, 0)         # everyone begins in the healthy state 
-d.c   <- d.e <- 0.03           # equal discounting of costs and QALYs by 3%
-v.Trt <- c("No Treatment", "Treatment") # store the strategy names
+### Model input
+  n.t   <- (52*(100-23))          # time horizon, lifetime from 23yrs, 1 week cycle
+  
+  v.n   <- c("H0","H1","SEV","D") # No HCP MGT (H0), HCP MGT (H1), Severe Exacerbation (SEV), Death (D)
+  n.s   <- length(v.n)            # the number of health states
+  v.n_sub  <-c("SCS", 
+               "ED", 
+               "Hospitalization") # sub-states of SevereExac: systemic corticosteroid uses (SCS), Emergency department visit (ED), hospitalization
+  n.s_sub  <- length(v.n_sub)     # number of sub-states  
+  
+  v.M_1 <- c(NA)                  # Initial health state distribution ??
+  
+  d.c   <- d.e <- (0.03/52)       # equal discounting of costs and QALYs by 3% per year 
+  v.Trt <- c("No OTC", 
+             "Primatene", 
+             "Symbicort ", 
+             "HCP Management" )   # store the strategy names
 
-# Transition probabilities (per cycle)
-p.HD    <- 0.005               # probability to die when healthy
-p.HS1   <- 0.15          	     # probability to become sick when healthy
-p.S1H   <- 0.5           	     # probability to become healthy when sick
-p.S1S2  <- 0.105         	     # probability to become sicker when sick
-rr.S1   <- 3             	     # rate ratio of death when sick vs healthy
-rr.S2   <- 10            	     # rate ratio of death when sicker vs healthy 
-r.HD    <- -log(1 - p.HD) 	   # rate of death when healthy
-r.S1D   <- rr.S1 * r.HD  	     # rate of death when sick
-r.S2D   <- rr.S2 * r.HD  	     # rate of death when sicker
-p.S1D   <- 1 - exp(-r.S1D)     # probability to die when sick
-p.S2D   <- 1 - exp(-r.S2D)     # probability to die when sikcer
- 
-# Cost and utility inputs  
-c.H     <- 2000                # cost of remaining for one cycle healthy
-c.S1    <- 4000                # cost of remaining for one cycle sick
-c.S2    <- 15000               # cost of remaining for one cycle sicker
-c.Trt   <- 12000               # cost of treatment (per cycle)
+  
+## Transition probabilities (per cycle)
+  p.H0_H1   <- NA                # probability entering HCP from no HCP management
+  p.H0_SEV  <- NA                # probability of severe exacerbation from no HCP management
+  p.H0_D   <- NA                 # probability of death from no HCP management
 
-u.H     <- 1                   # utility when healthy 
-u.S1    <- 0.75                # utility when sick 
-u.S2    <- 0.5                 # utility when sicker 
-u.Trt   <- 0.95                # utility when being treated
+  p.H1_H0  <- NA                 # probability of non-adherence to HCP management
+  p.H1_SEV  <- NA                # probability of severe exacerbation from HCP management
+  p.H1_D   <- NA                 # probability of death from HCP management 
+  
+
+  ## Sub-states: Severe Exacerbation 
+  p.SCS_D  <- NA                 # probability of asthma fatality from SCS state
+  p.ED_D   <- NA                 # probability of asthma fatality from ED 
+  p.HOSP_D <- NA                 # probability of asthma fatality from hospitalization
+  
+  p.SCS_H1  <- 1-(p.SCS_D)       # probability of entering HCP management from SCS
+  p.ED_H1   <- 1-(p.ED_D)        # probability of entering HCP management from ED
+  p.HOSP_H1 <- 1-(p.HOSP_D)      # probability of entering HCP management from hospitalization
+
+  OR.AF <- 2.6                   # Odds ratio for asthma fatality from SABA overuse
+  
+## Severe Exacerbation rates (weekly probability)
+  
+  r.nOTC_SEV <- r.PRIM_SEV <- NA 	# annual rate of severe exacerbation with no OTC or primatene OTC prn
+  r.SYM_SEV <- NA 	              # annual rate of severe exacerbation with symbicort PRN
+  r.HCP_SEV <- NA 	              # annual rate of severe exacerbation with HCP management (low dose ICS + SABA)
+  
+  p.nOTC_SEV <- 1 - exp(-r.nOTC_SEV/52)	 # weekly probability of severe exacerbation with no OTC or primatene OTC prn
+  p.PRIM_SEV <- 1 - exp(-r.PRIM_SEV/52)	 # weekly probability of severe exacerbation with no OTC or primatene OTC prn
+    p.nOTC_SCS <- p.PRIM_SCS <- NA
+    p.nOTC_ED <- p.PRIM_ED <- NA
+    p.nOTC_HOSP <- p.PRIM_HOSP <- NA
+  
+  p.SYM_SEV <- 1 - exp(-r.SYM_SEV/52) 	 # weekly probability of severe exacerbation with symbicort PRN
+    p.SYM_SCS  <- NA
+    p.SYM_ED  <- NA
+    p.SYM_HOSP <- NA
+    
+  p.HCP_SEV <- 1 - exp(-r.HCP_SEV/52)    # weekly probability of severe exacerbation with HCP management (low dose ICS + SABA)
+    p.HCP_SCS  <- NA
+    p.HCP_ED  <- NA
+    p.HCP_HOSP <- NA
+
+## Asthma Control Probability
+  p.nOTC_AC <- p.PRIM_AC <-  NA
+  p.SYM_AC <- NA
+  p.HCP_AC <- NA
+    
+### Cost and utility inputs
+
+## Direct Medical costs
+  c.HCP     <- NA               # cost of HCP management
+  c.AU      <- NA               # cost of uncontrolled asthma day
+  c.SCS     <- NA               # cost of being in SCS 
+  c.ED      <- NA               # cost of being in ED
+  c.HOSP    <- NA               # cost of being in HOSP
+  
+## Drug acquisition cost (per DAY)
+  c.PRIM     <- NA               # cost of primatene
+  c.SYM      <- NA               # cost of symbicort
+  c.ICS      <- NA               # cost of ICS
+  c.SABA     <- NA               # cost of SABA
+  c.ICS_SABA <- (c.ICS + c.SABA)
+
+## Indirect cost
+  c.timeHCP  <- NA # cost of HCP management time cost*Assuming 240 total minutes of 4 PCP visits per year, 20 min travel time, 40min wait, median wage $1037 in 2022
+  c.prodAU   <- NA # cost of productivity loss due to asthma not controlled days
+  c.prodSEV  <- NA # productive lose due to severe exacerbation.** Assuming no patient goes to work in severe exacerbation state
+  
+## Utility
+  du.AU    <- -0.06                # disutility of asthma uncontrolled day
+  du.SCS    <- -0.10               # disutility of systemic corticosteroid use
+  du.ED   <- -0.15                 # disutility of emergency department
+  du.HOSP <- -0.20                 # disutility of hospitalization
+  
+  u.H0    <- 0.87                 # utility of non-exacerbation
+  u.AU    <- (u.H0 + du.AU)       # utility of asthma uncontrolled day
+  u.SCS    <- (u.H0 + du.SCS)     # utility of SCS
+  u.ED   <- (u.H0 + du.ED)        # utility of emergency deparment 
+  u.HOSP    <- (u.H0 + du.HOSP)   # utility of hospitalization
+
+  
 ```
+
+```{r, Markov Model, include=FALSE}
+############################### Markov Model  ###########################
+
+# The Markov function for the 'Sick-Sicker' model keeps track of what happens to the cohort during each cycle. 
+Markov <- function(v.M_1, n.t, v.n, d.c, d.e, Trt = FALSE) {
+# Arguments:  
+  # v.M_1:   initial allocation of cohort across states
+  # n.t:     total number of cycles to run the model
+  # v.n:     vector of health state names
+  # d.c:     discount rate for costs
+  # d.e:     discount rate for effectiveness (QALYs)
+  # Trt:     is this the cohort receiving treatment? (default is FALSE)
+  
+  v.dwc <- 1 / (1 + d.c) ^ (0:n.t)   # calculate the cost discount weight based on the discount rate d.c 
+  v.dwe <- 1 / (1 + d.e) ^ (0:n.t)   # calculate the QALY discount weight based on the discount rate d.e
+  
+# create transition probability matrix
+m.P <- matrix(c(1 - (p.H0_H1 + p.H0_SEV + p.H0_D), p.H0_H1, p.H0_SEV,  p.H0_D, #H0 (no hcp mgt)
+                p.H1_H0, 1 - (p.H1_H0 + p.H1_SEV + p.H1_D), p.H1_SEV,  p.H1_D, #H1 (hcp mgt)
+                0, 1 - p.SEV_D, 0,  p.SEV_D, #SEV
+                0, 0, 0, 1), #D
+                nrow = n.s, ncol = n.s, byrow = T,
+                 dimnames = list (v.n, v.n))
+
+# create the transition trace matrix (m.TR) capturing the proportion of the cohort in each state at each time point
+m.TR <-  matrix(0, nrow = n.t + 1, ncol = n.s, 
+                   dimnames = list( paste("cycle", 0:n.t, sep = ""), v.n))
+
+m.TR[1, ]  <- v.M_1  # indicate the initial health state
+
+# create vectors of utility and costs for each state
+v.c <- c(c.H, c.S1 + c.Trt * Trt, c.S2 + c.Trt * Trt, 0)
+v.u <- c(u.H, Trt * u.Trt + (1 - Trt) * u.S1, u.S2, 0)
+
+# run the simulation 
+for (i in 2:(n.t + 1)){ 
+# calculate the proportion of the cohort in each state at time t
+	m.TR[i, ] <- t(m.TR[i - 1, ]) %*% m.P
+}  # close the loop for the individuals 
+
+tc <- m.TR %*% v.c  # calculate the costs
+te <- m.TR %*% v.u  # calculate the QALYs
+
+tc_hat <- t(tc) %*% v.dwc  # total (discounted) cost 
+te_hat <- t(te) %*% v.dwe  # total (discounted) QALY 
+
+results <- list(m.TR = m.TR, tc_hat = tc_hat, te_hat = te_hat) # store the results from the simulation in a list  
+return(results)  # return the results
+}
+
+##################################### Run the simulation ##################################
+sim_markov_no_trt <- Markov(v.M_1, n.t, v.n, d.c, d.e, Trt = FALSE) # run for no treatment
+sim_markov_trt    <- Markov(v.M_1, n.t, v.n, d.c, d.e, Trt = TRUE)  # run for treatement
+
+################################# Cost-effectiveness analysis #############################
+
+# store the mean costs of each strategy in a new variable C (vector costs)
+v.C <- c(sim_markov_no_trt$tc_hat, sim_markov_trt$tc_hat) 
+# store the mean QALYs of each strategy in a new variable E (vector effects)
+v.E <- c(sim_markov_no_trt$te_hat, sim_markov_trt$te_hat)
+
+delta.C <- v.C[2] - v.C[1]            # calculate incremental costs
+delta.E <- v.E[2] - v.E[1]            # calculate incremental QALYs
+ICER <- delta.C / delta.E             # calculate the ICER
+results <- c(delta.C, delta.E, ICER)  # store the values in a new variable
+
+# Create full incremental cost-effectiveness analysis table
+table_markov <- data.frame(
+  round(v.C, 0),              # costs per arm
+  round(v.E, 3),              # health outcomes per arm
+  c("", round(delta.C, 0)),   # incremental costs
+  c("", round(delta.E, 3)),   # incremental QALYs
+  c("", round(ICER, 0))       # ICER
+)
+rownames(table_markov) = v.Trt  # name the rows
+colnames(table_markov) = c("Costs", "QALYs","Incremental Costs", "QALYs Gained", "ICER") # name the columns
+table_markov                    # print the table 
+```
+
