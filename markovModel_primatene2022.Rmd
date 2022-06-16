@@ -136,6 +136,7 @@ Assumptions
   u.SCS    <- (u.H0 + du.SCS)     # utility of SCS
   u.ED   <- (u.H0 + du.ED)        # utility of emergency deparment 
   u.HOSP    <- (u.H0 + du.HOSP)   # utility of hospitalization
+  v.u_exac  <- c(u.SCS, u.ED, u.HOSP)
 
   
 ```
@@ -171,15 +172,15 @@ m.TR <-  matrix(0, nrow = n.t + 1, ncol = n.s,
 m.TR[1, ]  <- v.M_1  # indicate the initial health state
 
 # create vectors of utility and costs for each state
-v.c <- c(c.PRIM*7, 
-         c.ICS_SABA*7 + c.HCP + c.timeHCP, 
-         0, 
-         0)
+v.c <- c(c.PRIM*7 + ((1- p.H0_AC)*7*c.AU), #H0
+         c.ICS_SABA*7 + c.HCP + c.timeHCP + ((1- p.H1_AC)*7*c.AU), #H1
+         0, #SEV
+         0) #D
 
-v.u <- c(u.H0,
-         u.H1,
-         0,
-         0)
+v.u <- c(u.H0 + ((1- p.H0_AC)*7*du.AU), #H0
+         u.H1 + ((1- p.H1_AC)*7*du.AU), #H1
+         0, #SEV
+         0) #D
 
 # run the simulation 
 for (i in 2:(n.t + 1)){ 
@@ -190,7 +191,7 @@ for (i in 2:(n.t + 1)){
 texac <- m.TR[,3] %*% t(prop.H0_SEV)
 
 tc <-( m.TR %*% v.c) + ( texac %*% v.c_exac)  # calculate the costs, vc should be 0 for severe exac state
-te <- m.TR %*% v.u + ( texac %*% v.du_exac)  # calculate the QALYs, vu should be 0 for severe exac state
+te <- m.TR %*% v.u + ( texac %*% v.u_exac)  # calculate the QALYs, vu should be 0 for severe exac state
 
 tc_hat <- t(tc) %*% v.dwc  # total (discounted) cost 
 te_hat <- t(te) %*% v.dwe  # total (discounted) QALY 
