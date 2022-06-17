@@ -44,14 +44,14 @@ Assumptions
 ### Model input
   n.t   <- 20 # (52*(100-23))          # time horizon, lifetime from 23yrs, 1 week cycle
   
-  v.n   <- c("H0","H1","SEV","D")      # No HCP MGT (H0), HCP MGT (H1), Severe Exacerbation (SEV), Death (D)
+  v.n   <- c("H0","H1","SCS","ED","HOSP","D")      # No HCP MGT (H0), HCP MGT (H1), Severe Exacerbation (SEV), Death (D)
   n.s   <- length(v.n)                 # the number of health states
   v.n_sub  <-c("SCS", 
                "ED", 
                "Hospitalization")     # sub-states of SevereExac: systemic corticosteroid uses (SCS), Emergency department visit (ED), hospitalization
   n.s_sub  <- length(v.n_sub)         # number of sub-states  
   
-  v.M_1 <- c(1,0,0,0)                 # Initial health state distribution 
+  v.M_1 <- c(1,0,0,0,0,0)                 # Initial health state distribution 
   
   d.c   <- d.e <- (0.03/52)           # equal discounting of costs and QALYs by 3% per year
   v.Trt <- c("No OTC", 
@@ -60,58 +60,58 @@ Assumptions
              "HCP Management" )       # store the strategy names
 
 
-## Severe Exacerbation Rates
-  r.H0_SEV <- r.PRIM_SEV <- 0.20                    	# annual rate of severe exacerbation with no OTC or primatene OTC prn
-  r.SYM_SEV <- 0.11 	                                # annual rate of severe exacerbation with symbicort PRN
-  r.H1_SEV <- 0.12 	                                  # annual rate of severe exacerbation with HCP management (low dose ICS + SABA)
-  
-## Transition probabilities 
-  ##Annual
-    pAnn.H0_H1   <- 0                                   # probability entering HCP from no HCP management (can't go to H1 without sev)
-    pAnn.H0_SEV  <- (1-exp(-r.H0_SEV))                  # probability of severe exacerbation from no HCP management
-    pAnn.H0_D   <-  0.000976                            # probability of death from no HCP management (turn into vector)
-  
-    pAnn.H1_H0  <- (1-0.79)                             # probability of non-adherence to HCP management
-    pAnn.H1_SEV  <- (1-exp(-r.H1_SEV))                  # probability of severe exacerbation from HCP management
-    pAnn.H1_D   <- pAnn.H0_D                            # probability of death from HCP management (turn into vector)
-    
-    pAnn.SEV_H0 <- 0
-    pAnn.SEV_H1 <- 1                                    # ***(probability of Severe exacerbation to HCP management is basically just 1 - whoever doesnt die)
-    pAnn.SEV_D <-  0.0052                               # ****probability of asthma fatality from hospitalization* we need an overall probability/rate of death from severity
-  
-  ##WEEKLY (per cycle)****
-    p.H0_H1   <- 0                                        # probability entering HCP from no HCP management (can't go to H1 without sev)
-    p.H0_SEV  <- 1 - (1-pAnn.H0_SEV)^(1/52)               # probability of severe exacerbation from no HCP management
-    p.H0_D   <-  1 - (1-pAnn.H0_D)^(1/52)                 # probability of death from no HCP management (turn into vector)
-  
-    p.H1_H0  <- 1 - (1-pAnn.H1_H0)^(1/52)                 # probability of non-adherence to HCP management
-    p.H1_SEV  <- 1 - (1-pAnn.H1_SEV)^(1/52)               # probability of severe exacerbation from HCP management
-    p.H1_D   <- p.H0_D                                    # probability of death from HCP management (turn into vector)
-    
-    p.SEV_H0 <- 0
-    p.SEV_H1 <- 1 - (1-pAnn.SEV_H1)^(1/52)              #(probability of Severe exacerbation to HCP management is basically just 1 - whoever doesnt die)
-    p.SEV_D <-  1 - (1-pAnn.SEV_D)^(1/52)               # probability of asthma fatality from hospitalization* we need an overall probability/rate of death from severity
-  
+# Severe Exacerbation Rates
 ## Severe Exacerbation proportion (SCS, ED, HOSP)
   prop.H0_SEV <- prop.PRIM_SEV <- c(0.776,0.130,0.094)
   prop.SYM_SEV <- c(0.819,0.102,0.079)
   prop.H1_SEV <- c(0.784,0.152,0.064)
+  
+  p.H0_SCS <- (1-exp(-0.20/52)) * prop.H0_SEV[1] # weekly probability of severe exacerbation with no OTC or primatene OTC prn
+  p.H0_ED <- (1-exp(-0.20/52)) * prop.H0_SEV[2]
+  p.H0_Hosp <- (1-exp(-0.20/52)) * prop.H0_SEV[3]
+  
+  p.SYM_SCS <- (1-exp(-0.11/52)) * prop.SYM_SEV[1]	# annual rate of severe exacerbation with symbicort PRN
+  p.SYM_ED <- (1-exp(-0.11/52)) * prop.SYM_SEV[2]
+  p.SYM_Hosp <- (1-exp(-0.11/52)) * prop.SYM_SEV[3]
+  
+  p.H1_SCS <- (1-exp(-0.12/52)) * prop.H1_SEV[1]	# annual rate of severe exacerbation with HCP management (low dose ICS + SABA)
+  p.H1_ED <- (1-exp(-0.12/52)) * prop.H1_SEV[2]
+  p.H1_Hosp <- (1-exp(-0.12/52)) * prop.H1_SEV[3]
+  
+## Transition probabilities 
+    ##WEEKLY (per cycle)****
+    p.H0_H1   <- 0                    # weekly probability entering HCP from no HCP management (can't go to H1 without sev)
+    pAnn.H0_D   <-  0.000976          # probability of death from no HCP management (turn into vector)
+    p.H0_D   <-  1 - (1-pAnn.H0_D)^(1/52)                 
+    
+    pAnn.H1_H0  <- (1-0.79)                             # probability of non-adherence to HCP management
+    p.H1_H0  <- 1 - (1-pAnn.H1_H0)^(1/52)               # probability of non-adherence to HCP management
+    p.H1_D   <- p.H0_D 
+    
+    p.SCS_H0 <- 0
+    p.ED_H0 <- 0
+    p.Hosp_H0 <- 0
+    
+    pAnn.SEV_D <-  c(0.0005, 0.0032, 0.0020) 
+    p.SCS_D <- 1 - (1-pAnn.SEV_D[1])^(1/52) # probability of asthma fatality from hospitalization
+    p.ED_D <- 1 - (1-pAnn.SEV_D[2])^(1/52)
+    p.Hosp_D <- 1 - (1-pAnn.SEV_D[3])^(1/52)
+    p.SEV_H1 <- 1 - (p.SCS_D + p.ED_D + p.Hosp_D)  # probability of Severe exacerbation to HCP management is 1 - whoever doesnt die
     
 ## Asthma Control Probability (proportion: mean % of weeks with well controlled asthma)l
   p.H0_AC <- p.PRIM_AC <-  0.31
   p.SYM_AC <- 0.34
   p.H1_AC <- 0.44
 
-    
+
 ### Cost and utility inputs ###
 ## Direct Medical costs
   c.HCP     <- 53               # cost of HCP management
-  c.AU      <- 2               # cost of uncontrolled asthma day
+  c.AU      <- 15               # cost of uncontrolled asthma day
   c.SCS     <- 163               # cost of being in SCS 
   c.ED      <- 744               # cost of being in ED
   c.HOSP    <- 12398               # cost of being in HOSP
-  v.c_exac  <- c(c.SCS, c.ED, c.HOSP)
-  
+
 ## Drug acquisition cost (per DAY)
   c.PRIM     <- 0.1               # cost of primatene
   c.SYM      <- 1.35               # cost of symbicort
@@ -121,7 +121,7 @@ Assumptions
 
 ## Indirect cost
   c.timeHCP  <- 2 # cost of HCP management time cost*Assuming 240 total minutes of 4 PCP visits per year, 20 min travel time, 40min wait, median wage $1037 in 2022
-  c.prodAU   <- 2 # cost of productivity loss due to asthma not controlled days
+  c.prodAU   <- 17 # cost of productivity loss due to asthma not controlled days
   c.prodSEV  <- 1037 # productive lose due to severe exacerbation.** Assuming no patient goes to work in severe exacerbation state
   
 ## Utility
@@ -158,10 +158,12 @@ Markov <- function(v.M_1, n.t, v.n, d.c, d.e, Trt = FALSE) {
   v.dwe <- 1 / (1 + d.e) ^ (0:n.t)   # calculate the QALY discount weight based on the discount rate d.e
   
 # create transition probability matrix
-m.P <- matrix(c(1 - (p.H0_H1 + p.H0_SEV + p.H0_D), p.H0_H1, p.H0_SEV,  p.H0_D, #H0 (no hcp mgt)
-                p.H1_H0, 1 - (p.H1_H0 + p.H1_SEV + p.H1_D), p.H1_SEV,  p.H1_D, #H1 (hcp mgt)
-                0, 1 - p.SEV_D, 0,  p.SEV_D, #SEV
-                0, 0, 0, 1), #D
+m.P <- matrix(c(1-(p.H0_H1+p.H0_SCS+p.H0_ED+p.H0_Hosp+p.H0_D), p.H0_H1, p.H0_SCS, p.HO_ED, p.HO_Hosp, p.H0_D, #H0 (no hcp mgt)
+                p.H1_H0, 1 - (p.H1_H0+p.H1_SCS+p.H1_ED+p.H1_Hosp+p.H1_D), p.H1_SCS, p.H1_ED, p.H1_Hosp, p.H1_D, #H1 (hcp mgt)
+                0, 1 - (p.SCS_D+p.ED_D+p.Hosp_D+p.H0_D), 0, 0, 0, p.SCS_D+p.H0_D, #SCS
+                0, 1 - (p.SCS_D+p.ED_D+p.Hosp_D+p.H0_D), 0, 0, 0, p.ED_D+p.H0_D, #ED
+                0, 1 - (p.SCS_D+p.ED_D+p.Hosp_D+p.H0_D), 0, 0, 0, p.Hosp_D+p.H0_D, # Hosp
+                0, 0, 0, 0, 0, 1), #D
                 nrow = n.s, ncol = n.s, byrow = T,
                  dimnames = list (v.n, v.n))
 
@@ -182,16 +184,18 @@ v.u <- c(u.H0 + ((1- p.H0_AC)*7*du.AU), #H0
          0, #SEV
          0) #D
 
+v.uc <- c((1-p.H0_AC), (1-p.H1_AC), 0,0,0,0)  
+
 # run the simulation 
-for (i in 2:(n.t + 1)){ 
+for (i in 2:(n.t + 1)) { 
 # calculate the proportion of the cohort in each state at time t
 	m.TR[i, ] <- t(m.TR[i - 1, ]) %*% m.P
 }  # close the loop for the individuals 
 
-texac <- m.TR[,3] %*% t(prop.H0_SEV)
+tuc <- m.TR %*% v.uc
+tc <-( m.TR %*% v.c) + (tuc * c.AU)  # calculate the costs, vc should be 0 for severe exac state
+te <- m.TR %*% v.u + (tuc %*% du.AU)  # calculate the QALYs, vu should be 0 for severe exac state
 
-tc <-( m.TR %*% v.c) + ( texac %*% v.c_exac)  # calculate the costs, vc should be 0 for severe exac state
-te <- m.TR %*% v.u + ( texac %*% v.u_exac)  # calculate the QALYs, vu should be 0 for severe exac state
 
 tc_hat <- t(tc) %*% v.dwc  # total (discounted) cost 
 te_hat <- t(te) %*% v.dwe  # total (discounted) QALY 
