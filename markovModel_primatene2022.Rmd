@@ -40,7 +40,7 @@ Assumptions
 #rm(list = ls())  # remove any variables in R's memory
 
 ##################################### Model input #########################################
-```{r, Model input, include=false}
+```{r, Model input setup, include=false}
 ### Model input
   n.t   <- 20 # (52*(100-23))          # time horizon, lifetime from 23yrs, 1 week cycle
   
@@ -59,7 +59,9 @@ Assumptions
              "Symbicort ", 
              "HCP Management" )       # store the strategy names
 
+```
 
+```{r, model input parameters}
 # Severe Exacerbation Rates
 ## Severe Exacerbation proportion (SCS, ED, HOSP)
   prop.H0_SEV <- prop.PRIM_SEV <- c(0.776,0.130,0.094)
@@ -79,30 +81,41 @@ Assumptions
   p.H1_Hosp <- (1-exp(-0.12/52)) * prop.H1_SEV[3]
   
 ## Transition probabilities 
-    ##WEEKLY (per cycle)****
+
+  #H0
     p.H0_H1   <- 0                    # weekly probability entering HCP from no HCP management (can't go to H1 without sev)
-    pAnn.H0_D   <-  0.000976          # probability of death from no HCP management (turn into vector)
+    pAnn.H0_D   <-  c(0.000976, 0.0000815)          # probability of death from no HCP management (turn into vector)
     p.H0_D   <-  1 - (1-pAnn.H0_D)^(1/52)                 
     
+  #H1
     pAnn.H1_H0  <- (1-0.79)                             # probability of non-adherence to HCP management
     p.H1_H0  <- 1 - (1-pAnn.H1_H0)^(1/52)               # probability of non-adherence to HCP management
     p.H1_D   <- p.H0_D 
-    
+  
+  #SEV
     p.SCS_H0 <- 0
     p.ED_H0 <- 0
     p.Hosp_H0 <- 0
-    
-    pAnn.SEV_D <-  c(0.0005, 0.0032, 0.0020) 
-    p.SCS_D <- 1 - (1-pAnn.SEV_D[1])^(1/52) # probability of asthma fatality from hospitalization
-    p.ED_D <- 1 - (1-pAnn.SEV_D[2])^(1/52)
-    p.Hosp_D <- 1 - (1-pAnn.SEV_D[3])^(1/52)
-    p.SEV_H1 <- 1 - (p.SCS_D + p.ED_D + p.Hosp_D)  # probability of Severe exacerbation to HCP management is 1 - whoever doesnt die
+  
+    #Asthma Fataility (baseline)
+      pAnn.SEV_D <-  c(0.0005, 0.0032, 0.0020) 
+        p.SCS_D <- 1 - (1-pAnn.SEV_D[1])^(1/52)
+        p.ED_D <- 1 - (1-pAnn.SEV_D[2])^(1/52)
+        p.Hosp_D <- 1 - (1-pAnn.SEV_D[3])^(1/52)
+        p.SEV_H1 <- 1 - (p.SCS_D + p.ED_D + p.Hosp_D)  # probability of Severe exacerbation to HCP management is 1 - whoever doesnt die
+      
+    #Asthma Fataility * Spitzer OR for SABA overuse
+       pAnn.SEV_D_PRIM <-  c(0.0013, 0.0083, 0.0052) 
+        p.SCS_D_PRIM <- 1 - (1-pAnn.SEV_D_PRIM[1])^(1/52)
+        p.ED_D_PRIM <- 1 - (1-pAnn.SEV_D_PRIM[2])^(1/52)
+        p.Hosp_D_PRIM <- 1 - (1-pAnn.SEV_D_PRIM[3])^(1/52)
+        p.SEV_H1 <- 1 - (p.SCS_D_PRIM + p.ED_D_PRIM + p.Hosp_D_PRIM)  # probability of Severe exacerbation to HCP management is 1 - whoever doesnt die
+
     
 ## Asthma Control Probability (proportion: mean % of weeks with well controlled asthma)l
   p.H0_AC <- p.PRIM_AC <-  0.31
   p.SYM_AC <- 0.34
   p.H1_AC <- 0.44
-
 
 ### Cost and utility inputs ###
 ## Direct Medical costs
@@ -141,11 +154,12 @@ Assumptions
   
 ```
 
+
 ```{r, Markov Model, include=FALSE}
 ############################### Markov Model  ###########################
 
 # The Markov function for the 'Sick-Sicker' model keeps track of what happens to the cohort during each cycle. 
-Markov <- function(v.M_1, n.t, v.n, d.c, d.e, Trt = FALSE) {
+Markov <- function(v.M_1, n.t, v.n, d.c, d.e, trt = NULL) {
 # Arguments:  
   # v.M_1:   initial allocation of cohort across states
   # n.t:     total number of cycles to run the model
@@ -157,8 +171,77 @@ Markov <- function(v.M_1, n.t, v.n, d.c, d.e, Trt = FALSE) {
   v.dwc <- 1 / (1 + d.c) ^ (0:n.t)   # calculate the cost discount weight based on the discount rate d.c 
   v.dwe <- 1 / (1 + d.e) ^ (0:n.t)   # calculate the QALY discount weight based on the discount rate d.e
   
+  if(trt=="primatene"){
+  
+  #transition probability matrix
+  m.P <- matrix(c(1-(p.H0_H1+p.H0_SCS+p.H0_ED+p.H0_Hosp+p.H0_D), p.H0_H1, p.H0_SCS, p.H0_ED, p.H0_Hosp, p.H0_D, #H0 (no hcp mgt)
+                  p.H1_H0, 1 - (p.H1_H0+p.H1_SCS+p.H1_ED+p.H1_Hosp+p.H1_D), p.H1_SCS, p.H1_ED, p.H1_Hosp, p.H1_D, #H1 (hcp mgt)
+                  0, 1 - (p.SCS_D_PRIM +p.ED_D_PRIM+p.Hosp_D_PRIM+p.H0_D), 0, 0, 0, p.SCS_D_PRIM+p.H0_D, #SCS
+                  0, 1 - (p.SCS_D_PRIM +p.ED_D_PRIM+p.Hosp_D_PRIM+p.H0_D), 0, 0, 0, p.ED_D_PRIM+p.H0_D, #ED
+                  0, 1 - (p.SCS_D_PRIM +p.ED_D_PRIM+p.Hosp_D_PRIM+p.H0_D), 0, 0, 0, p.Hosp_D_PRIM+p.H0_D, # Hosp
+                  0, 0, 0, 0, 0, 1), #D
+                nrow = n.s, ncol = n.s, byrow = T,
+                dimnames = list (v.n, v.n))
+  
+  # create vectors of utility and costs for each state
+  v.c <- c((c.PRIM*7 + (1- p.H0_AC)*7*c.AU), #H0
+           c.ICS_SABA*7 + c.HCP + c.timeHCP + ((1- p.H1_AC)*7*c.AU), #H1
+           c.SCS, #SCS
+           c.ED, #ED
+           c.HOSP, #HOSP
+           0) #D
+  
+  v.u <- c(u.H0 + ((1- p.H0_AC)*7*du.AU), #H0
+           u.H1 + ((1- p.H1_AC)*7*du.AU), #H1
+           u.SCS, #SCS
+           u.ED, #ED
+           u.HOSP, #HOSP
+           0) #D
+  
+  v.uc <- c((1-p.H0_AC),
+            (1-p.H1_AC), 
+            0,
+            0,
+            0,
+            0)  
+  
+  
+  } if(trt=="symbicort"){
+  m.P <- matrix(c(1-(p.H0_H1+p.H0_SCS+p.H0_ED+p.H0_Hosp+p.H0_D), p.H0_H1, p.SYM_SCS, p.SYM_ED, p.SYM_Hosp, p.H0_D, #H0 (no hcp mgt)
+                  p.H1_H0, 1 - (p.H1_H0+p.H1_SCS+p.H1_ED+p.H1_Hosp+p.H1_D), p.H1_SCS, p.H1_ED, p.H1_Hosp, p.H1_D, #H1 (hcp mgt)
+                  0, 1 - (p.SCS_D+p.ED_D+p.Hosp_D+p.H0_D), 0, 0, 0, p.SCS_D+p.H0_D, #SCS
+                  0, 1 - (p.SCS_D+p.ED_D+p.Hosp_D+p.H0_D), 0, 0, 0, p.ED_D+p.H0_D, #ED
+                  0, 1 - (p.SCS_D+p.ED_D+p.Hosp_D+p.H0_D), 0, 0, 0, p.Hosp_D+p.H0_D, # Hosp
+                  0, 0, 0, 0, 0, 1), #D
+                  nrow = n.s, ncol = n.s, byrow = T,
+                   dimnames = list (v.n, v.n))
+  
+  # create vectors of utility and costs for each state
+  v.c <- c((c.SYM*7 + (1- p.SYM_AC)*7*c.AU), #H0
+           c.ICS_SABA*7 + c.HCP + c.timeHCP + ((1- p.H1_AC)*7*c.AU), #H1
+           c.SCS, #SCS
+           c.ED, #ED
+           c.HOSP, #HOSP
+           0) #D
+  
+  v.u <- c(u.H0 + ((1- p.SYM_AC)*7*du.AU), #H0
+           u.H1 + ((1- p.H1_AC)*7*du.AU), #H1
+           u.SCS, #SCS
+           u.ED, #ED
+           u.HOSP, #HOSP
+           0) #D
+  
+  v.uc <- c((1-p.SYM_AC),
+            (1-p.H1_AC), 
+            0,
+            0,
+            0,
+            0)  
+  }
+  
+  else{
 # create transition probability matrix
-m.P <- matrix(c(1-(p.H0_H1+p.H0_SCS+p.H0_ED+p.H0_Hosp+p.H0_D), p.H0_H1, p.H0_SCS, p.HO_ED, p.HO_Hosp, p.H0_D, #H0 (no hcp mgt)
+m.P <- matrix(c(1-(p.H0_H1+p.H0_SCS+p.H0_ED+p.H0_Hosp+p.H0_D), p.H0_H1, p.H0_SCS, p.H0_ED, p.H0_Hosp, p.H0_D, #H0 (no hcp mgt)
                 p.H1_H0, 1 - (p.H1_H0+p.H1_SCS+p.H1_ED+p.H1_Hosp+p.H1_D), p.H1_SCS, p.H1_ED, p.H1_Hosp, p.H1_D, #H1 (hcp mgt)
                 0, 1 - (p.SCS_D+p.ED_D+p.Hosp_D+p.H0_D), 0, 0, 0, p.SCS_D+p.H0_D, #SCS
                 0, 1 - (p.SCS_D+p.ED_D+p.Hosp_D+p.H0_D), 0, 0, 0, p.ED_D+p.H0_D, #ED
@@ -167,24 +250,35 @@ m.P <- matrix(c(1-(p.H0_H1+p.H0_SCS+p.H0_ED+p.H0_Hosp+p.H0_D), p.H0_H1, p.H0_SCS
                 nrow = n.s, ncol = n.s, byrow = T,
                  dimnames = list (v.n, v.n))
 
+# create vectors of utility and costs for each state
+v.c <- c(((1- p.H0_AC)*7*c.AU), #H0
+         c.ICS_SABA*7 + c.HCP + c.timeHCP + ((1- p.H1_AC)*7*c.AU), #H1
+         c.SCS, #SCS
+         c.ED, #ED
+         c.HOSP, #HOSP
+         0) #D
+
+v.u <- c(u.H0 + ((1- p.H0_AC)*7*du.AU), #H0
+         u.H1 + ((1- p.H1_AC)*7*du.AU), #H1
+         u.SCS, #SCS
+         u.ED, #ED
+         u.HOSP, #HOSP
+         0) #D
+
+v.uc <- c((1-p.H0_AC),
+          (1-p.H1_AC), 
+          0,
+          0,
+          0,
+          0)  
+}
+ 
 # create the transition trace matrix (m.TR) capturing the proportion of the cohort in each state at each time point
 m.TR <-  matrix(0, nrow = n.t + 1, ncol = n.s, 
                    dimnames = list( paste("cycle", 0:n.t, sep = ""), v.n))
 
 m.TR[1, ]  <- v.M_1  # indicate the initial health state
 
-# create vectors of utility and costs for each state
-v.c <- c(c.PRIM*7 + ((1- p.H0_AC)*7*c.AU), #H0
-         c.ICS_SABA*7 + c.HCP + c.timeHCP + ((1- p.H1_AC)*7*c.AU), #H1
-         0, #SEV
-         0) #D
-
-v.u <- c(u.H0 + ((1- p.H0_AC)*7*du.AU), #H0
-         u.H1 + ((1- p.H1_AC)*7*du.AU), #H1
-         0, #SEV
-         0) #D
-
-v.uc <- c((1-p.H0_AC), (1-p.H1_AC), 0,0,0,0)  
 
 # run the simulation 
 for (i in 2:(n.t + 1)) { 
