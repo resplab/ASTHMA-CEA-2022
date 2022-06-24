@@ -41,19 +41,11 @@ Assumptions
 
 ##################################### Model input #########################################
 ```{r, Model input setup, include=false}
-
-install.packages("here")
-
->>>>>>> 62ebd7b7fceb9274161ece1ef72bb11a8e4ee411
 library(here)
 library(tidyverse)
 mortality <- read_csv("mortality.csv")
 
-<<<<<<< HEAD
-### Model input #
-=======
 ### Model input
->>>>>>> 62ebd7b7fceb9274161ece1ef72bb11a8e4ee411
   n.t   <- 20 # (52*(100-23))          # time horizon, lifetime from 23yrs, 1 week cycle
   
   v.n   <- c("H0","H1","SCS","ED","HOSP","D")      # No HCP MGT (H0), HCP MGT (H1), Severe Exacerbation (SEV), Death (D)
@@ -95,13 +87,8 @@ mortality <- read_csv("mortality.csv")
 ## Transition probabilities #
 
   #H0
-<<<<<<< HEAD
     p.H0_H1   <- 0                                         # weekly probability entering HCP from no HCP management (can't go to H1 without sev)
     pAnn.H0_D   <-  rep(c(0.000976, 0.0000815),n.t/2)      # probability of death from no HCP management (turn into vector) - DUMMY VALUES of vector with                                                              same length as n.t, change to mortality$b_mortality
-=======
-    p.H0_H1   <- 0                    # weekly probability entering HCP from no HCP management (can't go to H1 without sev)
-    pAnn.H0_D   <-  rep(c(0.000976, 0.0000815),n.t/2)          # probability of death from no HCP management (turn into vector) - DUMMY VALUES of vector with same length as n.t, change to mortality$b_mortality
->>>>>>> 62ebd7b7fceb9274161ece1ef72bb11a8e4ee411
     p.H0_D   <-  1 - (1-pAnn.H0_D)^(1/52)                 
     
   #H1
@@ -327,7 +314,6 @@ for (i in 2:(n.t + 1)) {
            c.Hosp + c.prodHosp, #HOSP
            0) #D
   
-<<<<<<< HEAD
   v.u <- c(u.H0 + ((1- p.H0_AC)*7*du.AU), #H0
            u.H1 + ((1- p.H1_AC)*7*du.AU), #H1
            u.SCS, #SCS
@@ -344,69 +330,6 @@ for (i in 2:(n.t + 1)) {
 }
  
 }
-=======
-  else{
-# create transition probability matrix 
-m.P <- matrix(c(1-(p.H0_H1+p.H0_SCS+p.H0_ED+p.H0_Hosp+p.H0_D), p.H0_H1, p.H0_SCS, p.H0_ED, p.H0_Hosp, p.H0_D, #H0 (no hcp mgt)
-                p.H1_H0, 1 - (p.H1_H0+p.H1_SCS+p.H1_ED+p.H1_Hosp+p.H1_D), p.H1_SCS, p.H1_ED, p.H1_Hosp, p.H1_D, #H1 (hcp mgt)
-                0, 1 - (p.SCS_D+p.ED_D+p.Hosp_D+p.H0_D), 0, 0, 0, p.SCS_D+p.H0_D, #SCS
-                0, 1 - (p.SCS_D+p.ED_D+p.Hosp_D+p.H0_D), 0, 0, 0, p.ED_D+p.H0_D, #ED
-                0, 1 - (p.SCS_D+p.ED_D+p.Hosp_D+p.H0_D), 0, 0, 0, p.Hosp_D+p.H0_D, # Hosp
-                0, 0, 0, 0, 0, 1), #D
-                nrow = n.s, ncol = n.s, byrow = T,
-                 dimnames = list(v.n, v.n))
-
-
-# create vectors of utility and costs for each state
-v.c <- c(((1- p.H0_AC)*7*c.AU), #H0
-         c.ICS_SABA*7 + c.HCP + c.timeHCP + ((1- p.H1_AC)*7*c.AU), #H1
-         c.SCS, #SCS
-         c.ED, #ED
-         c.HOSP, #HOSP
-         0) #D
-
-v.u <- c(u.H0 + ((1- p.H0_AC)*7*du.AU), #H0
-         u.H1 + ((1- p.H1_AC)*7*du.AU), #H1
-         u.SCS, #SCS
-         u.ED, #ED
-         u.HOSP, #HOSP
-         0) #D
-
-v.uc <- c((1-p.H0_AC),
-          (1-p.H1_AC), 
-          0,
-          0,
-          0,
-          0)  
-}
- 
-# create the transition trace matrix (m.TR) capturing the proportion of the cohort in each state at each time point
-m.TR <-  matrix(0, nrow = n.t + 1, ncol = n.s, 
-                   dimnames = list( paste("cycle", 0:n.t, sep = ""), v.n))
-
-m.TR[1, ]  <- v.M_1  # indicate the initial health state
-
-
-# run the simulation 
-for (i in 2:(n.t + 1)) { 
-  for (j in 1:n.t) {
-    
-# create the transition matrix for each model cycle
-m.P <- matrix(c(1-(p.H0_H1+p.H0_SCS+p.H0_ED+p.H0_Hosp+p.H0_D[j]), p.H0_H1, p.H0_SCS, p.H0_ED, p.H0_Hosp, p.H0_D[j], #H0 (no hcp mgt)
-                p.H1_H0, 1 - (p.H1_H0+p.H1_SCS+p.H1_ED+p.H1_Hosp+p.H1_D[j]), p.H1_SCS, p.H1_ED, p.H1_Hosp, p.H1_D[j], #H1 (hcp mgt)
-                0, 1 - (p.SCS_D+p.ED_D+p.Hosp_D+p.H0_D[j]), 0, 0, 0, p.SCS_D+p.H0_D[j], #SCS
-                0, 1 - (p.SCS_D+p.ED_D+p.Hosp_D+p.H0_D[j]), 0, 0, 0, p.ED_D+p.H0_D[j], #ED
-                0, 1 - (p.SCS_D+p.ED_D+p.Hosp_D+p.H0_D[j]), 0, 0, 0, p.Hosp_D+p.H0_D[j], # Hosp
-                0, 0, 0, 0, 0, 1), #D
-                nrow = n.s, ncol = n.s, byrow = T,
-                 dimnames = list(v.n, v.n))
-print(m.P) # show transition matrix for each model cycle to make sure p.H0_D is working - can remove after debugging
-
-# calculate the proportion of the cohort in each state at time t
-	m.TR[i, ] <- t(m.TR[i - 1, ]) %*% m.P
-  }
-}  # close the loop for the individuals 
->>>>>>> 62ebd7b7fceb9274161ece1ef72bb11a8e4ee411
 
 tuc <- m.TR %*% v.uc
 tc <-( m.TR %*% v.c) + (tuc * c.AU)  # calculate the costs, vc should be 0 for severe exac state
