@@ -45,7 +45,7 @@ library(here)
 library(tidyverse)
 mortality <- read_csv("mortality.csv")
 
-### Model input
+### Model input #
   n.t   <- 20 # (52*(100-23))          # time horizon, lifetime from 23yrs, 1 week cycle
   
   v.n   <- c("H0","H1","SCS","ED","HOSP","D")      # No HCP MGT (H0), HCP MGT (H1), Severe Exacerbation (SEV), Death (D)
