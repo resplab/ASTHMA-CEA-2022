@@ -84,7 +84,7 @@ mortality <- read_csv("mortality.csv")
   p.H1_ED <- (1-exp(-0.12/52)) * prop.H1_SEV[2]
   p.H1_Hosp <- (1-exp(-0.12/52)) * prop.H1_SEV[3]
   
-## Transition probabilities 
+## Transition probabilities #
 
   #H0
     p.H0_H1   <- 0                                         # weekly probability entering HCP from no HCP management (can't go to H1 without sev)
