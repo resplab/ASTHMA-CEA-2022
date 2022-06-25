@@ -88,7 +88,7 @@ mortality <- read_csv("mortality.csv")
 
   #H0
     p.H0_H1   <- 0                                         # weekly probability entering HCP from no HCP management (can't go to H1 without sev)
-    pAnn.H0_D   <-  rep(c(0.000976, 0.0000815),n.t/2)      # probability of death from no HCP management (turn into vector) - DUMMY VALUES of vector with                                                              same length as n.t, change to mortality$b_mortality
+    pAnn.H0_D   <-  mortality$b_mortality                  # probability of death from no HCP management (turn into vector) - DUMMY VALUES of vector with                                                              same length as n.t, change to mortality$b_mortality
     p.H0_D   <-  1 - (1-pAnn.H0_D)^(1/52)                 
     
   #H1
@@ -102,18 +102,18 @@ mortality <- read_csv("mortality.csv")
     p.Hosp_H0 <- 0
   
     #Asthma Fatality (baseline)
-        pAnn.SCS_D <- rep(c(0.0005, 0.0010), n.t/2)
-        pAnn.ED_D <- rep(c(0.0032, 0.0064), n.t/2)
-        pAnn.Hosp_D <- rep(c(0.0020, 0.0040), n.t/2) 
+        pAnn.SCS_D <- mortality$p.SCS_AF
+        pAnn.ED_D <- mortality$p.ED_AF
+        pAnn.Hosp_D <- mortality$p.HOSP_AF
         
         p.SCS_D <- 1 - (1-pAnn.SCS_D)^(1/52)
         p.ED_D <- 1 - (1-pAnn.ED_D)^(1/52)
         p.Hosp_D <- 1 - (1-pAnn.Hosp_D)^(1/52)
 
     #Asthma Fatality * Spitzer OR for SABA overuse
-        pAnn.SCS_D_PRIM <- rep(c(0.0013, 0.0026),n.t/2)
-        pAnn.ED_D_PRIM <- rep(c(0.0083, 0.0160), n.t/2)
-        pAnn.Hosp_D_PRIM <- rep(c(0.0052, 0.010), n.t/2)
+        pAnn.SCS_D_PRIM <- mortality$pSp.SCS_AF
+        pAnn.ED_D_PRIM <- mortality$pSp.ED_AF
+        pAnn.Hosp_D_PRIM <- mortality$pSp.HOSP_AF
          
         p.SCS_D_PRIM <- 1 - (1-pAnn.SCS_D_PRIM)^(1/52)
         p.ED_D_PRIM <- 1 - (1-pAnn.ED_D_PRIM)^(1/52)
