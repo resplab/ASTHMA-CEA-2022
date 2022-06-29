@@ -76,19 +76,19 @@ mortality <- read_csv("mortality.csv")
   p.H0_ED <- (1-exp(-0.20/52)) * prop.H0_SEV[2]
   p.H0_Hosp <- (1-exp(-0.20/52)) * prop.H0_SEV[3]
   
-  p.SYM_SCS <- (1-exp(-0.11/52)) * prop.SYM_SEV[1]	# annual rate of severe exacerbation with symbicort PRN
+  p.SYM_SCS <- (1-exp(-0.11/52)) * prop.SYM_SEV[1]	# weekly rate of severe exacerbation with symbicort PRN
   p.SYM_ED <- (1-exp(-0.11/52)) * prop.SYM_SEV[2]
   p.SYM_Hosp <- (1-exp(-0.11/52)) * prop.SYM_SEV[3]
   
-  p.H1_SCS <- (1-exp(-0.12/52)) * prop.H1_SEV[1]	# annual rate of severe exacerbation with HCP management (low dose ICS + SABA)
+  p.H1_SCS <- (1-exp(-0.12/52)) * prop.H1_SEV[1]	# weekly rate of severe exacerbation with HCP management (low dose ICS + SABA)
   p.H1_ED <- (1-exp(-0.12/52)) * prop.H1_SEV[2]
   p.H1_Hosp <- (1-exp(-0.12/52)) * prop.H1_SEV[3]
   
 ## Transition probabilities #
 
   #H0
-    p.H0_H1   <- 0                                         # weekly probability entering HCP from no HCP management (can't go to H1 without sev)
-    pAnn.H0_D   <-  mortality$b_mortality                  # probability of death from no HCP management (turn into vector) - DUMMY VALUES of vector with                                                              same length as n.t, change to mortality$b_mortality
+    p.H0_H1   <- 0                     # weekly probability entering HCP from no HCP management (can't go to H1 without sev)
+    pAnn.H0_D   <-  mortality$b_mortality   # probability of death from no HCP management (turn into vector)
     p.H0_D   <-  1 - (1-pAnn.H0_D)^(1/52)                 
     
   #H1
@@ -101,23 +101,23 @@ mortality <- read_csv("mortality.csv")
     p.ED_H0 <- 0
     p.Hosp_H0 <- 0
   
-    #Asthma Fatality (baseline)
-        pAnn.SCS_D <- mortality$p.SCS_AF
-        pAnn.ED_D <- mortality$p.ED_AF
-        pAnn.Hosp_D <- mortality$p.HOSP_AF
+  #Asthma Fatality (baseline)
+    pAnn.SCS_D <- mortality$p.SCS_AF
+    pAnn.ED_D <- mortality$p.ED_AF
+    pAnn.Hosp_D <- mortality$p.HOSP_AF
         
-        p.SCS_D <- 1 - (1-pAnn.SCS_D)^(1/52)
-        p.ED_D <- 1 - (1-pAnn.ED_D)^(1/52)
-        p.Hosp_D <- 1 - (1-pAnn.Hosp_D)^(1/52)
+    p.SCS_D <- 1 - (1-pAnn.SCS_D)^(1/52)
+    p.ED_D <- 1 - (1-pAnn.ED_D)^(1/52)
+    p.Hosp_D <- 1 - (1-pAnn.Hosp_D)^(1/52)
 
-    #Asthma Fatality * Spitzer OR for SABA overuse
-        pAnn.SCS_D_PRIM <- mortality$pSp.SCS_AF
-        pAnn.ED_D_PRIM <- mortality$pSp.ED_AF
-        pAnn.Hosp_D_PRIM <- mortality$pSp.HOSP_AF
-         
-        p.SCS_D_PRIM <- 1 - (1-pAnn.SCS_D_PRIM)^(1/52)
-        p.ED_D_PRIM <- 1 - (1-pAnn.ED_D_PRIM)^(1/52)
-        p.Hosp_D_PRIM <- 1 - (1-pAnn.Hosp_D_PRIM)^(1/52)
+  #Asthma Fatality * Spitzer OR for SABA overuse
+    pAnn.SCS_D_PRIM <- mortality$pSp.SCS_AF
+    pAnn.ED_D_PRIM <- mortality$pSp.ED_AF
+    pAnn.Hosp_D_PRIM <- mortality$pSp.HOSP_AF
+       
+    p.SCS_D_PRIM <- 1 - (1-pAnn.SCS_D_PRIM)^(1/52)
+    p.ED_D_PRIM <- 1 - (1-pAnn.ED_D_PRIM)^(1/52)
+    p.Hosp_D_PRIM <- 1 - (1-pAnn.Hosp_D_PRIM)^(1/52)
 
     
 ## Asthma Control Probability (proportion: mean % of weeks with well controlled asthma)l
@@ -126,7 +126,7 @@ mortality <- read_csv("mortality.csv")
   p.H1_AC <- 0.44
 
 ### Cost and utility inputs ###
-## Direct Medical costs
+## Direct Medical costs (per week)
   c.HCP     <- 53               # cost of HCP management
   c.AU      <- 15               # cost of uncontrolled asthma week
   c.SCS     <- 163               # cost of being in SCS 
@@ -140,7 +140,7 @@ mortality <- read_csv("mortality.csv")
   c.SABA     <- 0.13 * 7             # cost of SABA
   c.ICS_SABA <- (c.ICS + c.SABA)
 
-## Indirect cost 
+## Indirect costs 
   c.timeHCP  <- 2 # HCP management time/week*Assuming 240 total minutes of 4 PCP visits per year, 20 min travel time, 40min wait, median wage $1037 in 2022
   c.prodAU   <- 17 # cost of productivity loss due to asthma not controlled days per week*
   
@@ -220,8 +220,8 @@ Markov <- function(v.M_1, n.t, v.n, d.c, d.e, trt=FALSE) {
            c.Hosp + c.prodHosp, #HOSP
            0) #D
   
-  v.u <- c(u.H0 + ((1- p.H0_AC)*7*du.AU), #H0
-           u.H1 + ((1- p.H1_AC)*7*du.AU), #H1
+  v.u <- c(u.H0 + ((1- p.H0_AC)*du.AU), #H0
+           u.H1 + ((1- p.H1_AC)*du.AU), #H1
            u.SCS, #SCS
            u.ED, #ED
            u.Hosp, #HOSP
@@ -267,8 +267,8 @@ Markov <- function(v.M_1, n.t, v.n, d.c, d.e, trt=FALSE) {
            c.Hosp + c.prodHosp, #HOSP
            0) #D
   
-  v.u <- c(u.H0 + ((1- p.SYM_AC)*7*du.AU), #H0
-           u.H1 + ((1- p.H1_AC)*7*du.AU), #H1
+  v.u <- c(u.H0 + ((1- p.SYM_AC)*du.AU), #H0
+           u.H1 + ((1- p.H1_AC)*du.AU), #H1
            u.SCS, #SCS
            u.ED, #ED
            u.Hosp, #HOSP
@@ -314,8 +314,8 @@ for (i in 2:(n.t + 1)) {
            c.Hosp + c.prodHosp, #HOSP
            0) #D
   
-  v.u <- c(u.H0 + ((1- p.H0_AC)*7*du.AU), #H0
-           u.H1 + ((1- p.H1_AC)*7*du.AU), #H1
+  v.u <- c(u.H0 + ((1- p.H0_AC)*du.AU), #H0
+           u.H1 + ((1- p.H1_AC)*du.AU), #H1
            u.SCS, #SCS
            u.ED, #ED
            u.Hosp, #HOSP
