@@ -36,8 +36,6 @@ Assumptions
 5. Risk reductions in severe exacerbations and asthma-related mortality were modeled for patients receiving healthcare provider management and PRN budesonide-formoterol OTC, with risk increases in asthma fatality modeled for patients receiving PRN inhaled epinephrine OTC 
 6. Variable adherence to HCP management 
 
-######################################################################################################
-#rm(list = ls())  # remove any variables in R's memory
 
 ##################################### Model input #########################################
 ```{r, Model input setup, include=false}
@@ -197,11 +195,11 @@ Markov <- function(v.M_1, n.t, v.n, d.c, d.e, trt=FALSE) {
     for (j in 1:n.t) {
       
       # create the transition matrix for each model cycle
-      m.P <- matrix(c(1-(p.H0_H1+p.H0_SCS+p.H0_ED+p.H0_Hosp+p.H0_D[j]), p.H0_H1, p.H0_SCS, p.H0_ED, p.H0_Hosp, p.H0_D[j], #H0 (no hcp mgt)
-                      p.H1_H0, 1 - (p.H1_H0+p.H1_SCS+p.H1_ED+p.H1_Hosp+p.H1_D[j]), p.H1_SCS, p.H1_ED, p.H1_Hosp, p.H1_D[j], #H1 (hcp mgt)
-                      0, 1 - (p.SCS_D_PRIM[j]+p.ED_D_PRIM[j]+p.Hosp_D_PRIM[j]+p.H0_D[j]), 0, 0, 0, p.SCS_D_PRIM[j]+p.H0_D[j], #SCS
-                      0, 1 - (p.SCS_D_PRIM[j]+p.ED_D_PRIM[j]+p.Hosp_D_PRIM[j]+p.H0_D[j]), 0, 0, 0, p.ED_D_PRIM[j]+p.H0_D[j], #ED
-                      0, 1 - (p.SCS_D_PRIM[j]+p.ED_D_PRIM[j]+p.Hosp_D_PRIM[j]+p.H0_D[j]), 0, 0, 0, p.Hosp_D_PRIM[j]+p.H0_D[j], # Hosp
+      m.P <- matrix(c(1-min((p.H0_H1+p.H0_SCS+p.H0_ED+p.H0_Hosp+p.H0_D[j]),1), p.H0_H1, p.H0_SCS, p.H0_ED, p.H0_Hosp, p.H0_D[j], #H0 (no hcp mgt)
+                      p.H1_H0, 1 - min((p.H1_H0+p.H1_SCS+p.H1_ED+p.H1_Hosp+p.H1_D[j]),1), p.H1_SCS, p.H1_ED, p.H1_Hosp, p.H1_D[j], #H1 (hcp mgt)
+                      0, 1 - min((p.SCS_D_PRIM[j]+p.ED_D_PRIM[j]+p.Hosp_D_PRIM[j]+p.H0_D[j]),1), 0, 0, 0, min(p.SCS_D_PRIM[j]+p.H0_D[j],1), #SCS
+                      0, 1 - min((p.SCS_D_PRIM[j]+p.ED_D_PRIM[j]+p.Hosp_D_PRIM[j]+p.H0_D[j]),1), 0, 0, 0, min(p.ED_D_PRIM[j]+p.H0_D[j],1), #ED
+                      0, 1 - min((p.SCS_D_PRIM[j]+p.ED_D_PRIM[j]+p.Hosp_D_PRIM[j]+p.H0_D[j]),1), 0, 0, 0, min(p.Hosp_D_PRIM[j]+p.H0_D[j],1), # Hosp
                       0, 0, 0, 0, 0, 1), #D
                     nrow = n.s, ncol = n.s, byrow = T,
                     dimnames = list(v.n, v.n))
@@ -244,11 +242,11 @@ Markov <- function(v.M_1, n.t, v.n, d.c, d.e, trt=FALSE) {
     for (j in 1:n.t) {
       
       # create the transition matrix for each model cycle
-      m.P <- matrix(c(1-(p.H0_H1+p.H0_SCS+p.H0_ED+p.H0_Hosp+p.H0_D[j]), p.H0_H1, p.SYM_SCS, p.SYM_ED, p.SYM_Hosp, p.H0_D[j], #H0 (no hcp mgt)
-                      p.H1_H0, 1 - (p.H1_H0+p.H1_SCS+p.H1_ED+p.H1_Hosp+p.H1_D[j]), p.H1_SCS, p.H1_ED, p.H1_Hosp, p.H1_D[j], #H1 (hcp mgt)
-                      0, 1 - (p.SCS_D[j]+p.ED_D[j]+p.Hosp_D[j]+p.H0_D[j]), 0, 0, 0, p.SCS_D[j]+p.H0_D[j], #SCS
-                      0, 1 - (p.SCS_D[j]+p.ED_D[j]+p.Hosp_D[j]+p.H0_D[j]), 0, 0, 0, p.ED_D[j]+p.H0_D[j], #ED
-                      0, 1 - (p.SCS_D[j]+p.ED_D[j]+p.Hosp_D[j]+p.H0_D[j]), 0, 0, 0, p.Hosp_D[j]+p.H0_D[j], # Hosp
+      m.P <- matrix(c(1-min((p.H0_H1+p.H0_SCS+p.H0_ED+p.H0_Hosp+p.H0_D[j]),1), p.H0_H1, p.SYM_SCS, p.SYM_ED, p.SYM_Hosp, p.H0_D[j], #H0 (no hcp mgt)
+                      p.H1_H0, 1 - min((p.H1_H0+p.H1_SCS+p.H1_ED+p.H1_Hosp+p.H1_D[j]),1), p.H1_SCS, p.H1_ED, p.H1_Hosp, p.H1_D[j], #H1 (hcp mgt)
+                      0, 1 - min((p.SCS_D[j]+p.ED_D[j]+p.Hosp_D[j]+p.H0_D[j]),1), 0, 0, 0, min(p.SCS_D[j]+p.H0_D[j],1), #SCS
+                      0, 1 - min((p.SCS_D[j]+p.ED_D[j]+p.Hosp_D[j]+p.H0_D[j]),1), 0, 0, 0, min(p.ED_D[j]+p.H0_D[j],1), #ED
+                      0, 1 - min((p.SCS_D[j]+p.ED_D[j]+p.Hosp_D[j]+p.H0_D[j]),1), 0, 0, 0, min(p.Hosp_D[j]+p.H0_D[j],1), # Hosp
                       0, 0, 0, 0, 0, 1), #D
                     nrow = n.s, ncol = n.s, byrow = T,
                     dimnames = list(v.n, v.n))
@@ -289,14 +287,15 @@ for (i in 2:(n.t + 1)) {
   for (j in 1:n.t) {
     
     # create the transition matrix for each model cycle
-    m.P <- matrix(c(1-(p.H0_H1+p.H0_SCS+p.H0_ED+p.H0_Hosp+p.H0_D[j]), p.H0_H1, p.H0_SCS, p.H0_ED, p.H0_Hosp, p.H0_D[j], #H0 (no hcp mgt)
-                    p.H1_H0, 1 - (p.H1_H0+p.H1_SCS+p.H1_ED+p.H1_Hosp+p.H1_D[j]), p.H1_SCS, p.H1_ED, p.H1_Hosp, p.H1_D[j], #H1 (hcp mgt)
-                    0, 1 - (p.SCS_D[j]+p.ED_D[j]+p.Hosp_D[j]+p.H0_D[j]), 0, 0, 0, p.SCS_D[j]+p.H0_D[j], #SCS
-                    0, 1 - (p.SCS_D[j]+p.ED_D[j]+p.Hosp_D[j]+p.H0_D[j]), 0, 0, 0, p.ED_D[j]+p.H0_D[j], #ED
-                    0, 1 - (p.SCS_D[j]+p.ED_D[j]+p.Hosp_D[j]+p.H0_D[j]), 0, 0, 0, p.Hosp_D[j]+p.H0_D[j], # Hosp
+    m.P <- matrix(c(1-min((p.H0_H1+p.H0_SCS+p.H0_ED+p.H0_Hosp+p.H0_D[j]),1), p.H0_H1, p.H0_SCS, p.H0_ED, p.H0_Hosp, p.H0_D[j], #H0 (no hcp mgt)
+                    p.H1_H0, 1 - min((p.H1_H0+p.H1_SCS+p.H1_ED+p.H1_Hosp+p.H1_D[j]),1), p.H1_SCS, p.H1_ED, p.H1_Hosp, p.H1_D[j], #H1 (hcp mgt)
+                    0, 1 - min((p.SCS_D[j]+p.ED_D[j]+p.Hosp_D[j]+p.H0_D[j]),1), 0, 0, 0, min(p.SCS_D[j]+p.H0_D[j],1), #SCS
+                    0, 1 - min((p.SCS_D[j]+p.ED_D[j]+p.Hosp_D[j]+p.H0_D[j]),1), 0, 0, 0, min(p.ED_D[j]+p.H0_D[j],1), #ED
+                    0, 1 - min((p.SCS_D[j]+p.ED_D[j]+p.Hosp_D[j]+p.H0_D[j]),1), 0, 0, 0, min(p.Hosp_D[j]+p.H0_D[j],1), # Hosp
                     0, 0, 0, 0, 0, 1), #D
                   nrow = n.s, ncol = n.s, byrow = T,
                   dimnames = list(v.n, v.n))
+    
     print(m.P) # show transition matrix for each model cycle to make sure p.H0_D is working - can remove after debugging
     
     # calculate the proportion of the cohort in each state at time t
@@ -350,15 +349,15 @@ return(results)  # return the results
 ##################################### Run the simulation ##################################
 sim_markov_no_trt <- Markov(v.M_1, n.t, v.n, d.c, d.e) # run for no treatment
 sim_markov_PRIM    <- Markov(v.M_1, n.t, v.n, d.c, d.e, trt = "primatene")  # run for treatement
-sim_markov_PRIM    <- Markov(v.M_1, n.t, v.n, d.c, d.e, trt = "symbicort")  # run for treatement
+sim_markov_SYMB    <- Markov(v.M_1, n.t, v.n, d.c, d.e, trt = "symbicort")  # run for treatement
 
 
 ################################# Cost-effectiveness analysis #############################
 
 # store the mean costs of each strategy in a new variable C (vector costs)
-v.C <- c(sim_markov_no_trt$tc_hat, sim_markov_trt$tc_hat) 
+v.C <- c(sim_markov_no_trt$tc_hat, sim_markov_PRIM$tc_hat) 
 # store the mean QALYs of each strategy in a new variable E (vector effects)
-v.E <- c(sim_markov_no_trt$te_hat, sim_markov_trt$te_hat)
+v.E <- c(sim_markov_no_trt$te_hat, sim_markov_PRIM$te_hat)
 
 delta.C <- v.C[2] - v.C[1]            # calculate incremental costs
 delta.E <- v.E[2] - v.E[1]            # calculate incremental QALYs
