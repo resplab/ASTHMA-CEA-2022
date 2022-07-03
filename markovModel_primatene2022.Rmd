@@ -148,14 +148,13 @@ mortality <- read_csv("mortality.csv")
   c.prodHosp <- 1037
   
 ## Utility
-  du.AU    <- -0.06                # disutility of asthma uncontrolled day
-  du.SCS    <- -0.10               # disutility of systemic corticosteroid use
-  du.ED   <- -0.15                 # disutility of emergency department
-  du.Hosp <- -0.20                 # disutility of hospitalization
+  du.AU    <- -0.06/52                # disutility of asthma uncontrolled week
+  du.SCS    <- -0.10/52               # disutility of systemic corticosteroid use
+  du.ED   <- -0.15/52                 # disutility of emergency department
+  du.Hosp <- -0.20/52                 # disutility of hospitalization
   v.du_exac  <- c(du.SCS, du.ED, du.Hosp)
   
-  u.H0 <- u.H1  <- 0.87           # utility of non-exacerbation
-  u.AU    <- (u.H0 + du.AU)       # utility of asthma uncontrolled day
+  u.H0 <- u.H1  <- 0.87/52          # utility of non-exacerbation
   u.SCS    <- (u.H0 + du.SCS)     # utility of SCS
   u.ED   <- (u.H0 + du.ED)        # utility of emergency deparment 
   u.Hosp    <- (u.H0 + du.Hosp)   # utility of hospitalization
