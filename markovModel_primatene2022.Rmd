@@ -44,85 +44,94 @@ library(tidyverse)
 mortality <- read_csv("mortality.csv")
 
 ### Model input
-  n.t   <- (52*(100-23)) #20          # time horizon, lifetime from 23yrs, 1 week cycle
+  n.t   <- (52*(100-23))            # time horizon, lifetime from 23yrs, 1 week cycle
   
-  v.n   <- c("H0","H1","SCS","ED","HOSP","D")      # No HCP MGT (H0), HCP MGT (H1), Severe Exacerbation (SEV), Death (D)
+  v.n   <- c("H0C","H0NC", #H0 no hcp mgt
+             "H1C", "H1NC", #H1 HCP MGT
+             "SCS","ED","HOSP", #SEV exacerbation
+             "D") #death
+  
   n.s   <- length(v.n)                 # the number of health states
-  v.n_sub  <-c("SCS", 
-               "ED", 
-               "Hospitalization")     # sub-states of SevereExac: systemic corticosteroid uses (SCS), Emergency department visit (ED), hospitalization
-  n.s_sub  <- length(v.n_sub)         # number of sub-states  
-  
-  v.M_1 <- c(1,0,0,0,0,0)                 # Initial health state distribution 
+  v.M_1 <- c(1,0,0,0,0,0,0,0)          # Initial health state distribution - Everyone starts at controlled no HCP management
   
   d.c   <- d.e <- (0.03/52)           # equal discounting of costs and QALYs by 3% per year
   v.Trt <- c("No OTC", 
              "Primatene", 
-             "Symbicort ", 
-             "HCP Management" )       # store the strategy names
+             "Symbicort")       # store the strategy names
 
 ```
 
 ```{r, model input parameters}
-# Severe Exacerbation Rates
-## Severe Exacerbation proportion (SCS, ED, HOSP)
-  prop.H0_SEV <- prop.PRIM_SEV <- c(0.776,0.130,0.094)
-  prop.SYM_SEV <- c(0.819,0.102,0.079)
-  prop.H1_SEV <- c(0.784,0.152,0.064)
-  
-  p.H0_SCS <- (1-exp(-0.20/52)) * prop.H0_SEV[1] # weekly probability of severe exacerbation with no OTC or primatene OTC prn
-  p.H0_ED <- (1-exp(-0.20/52)) * prop.H0_SEV[2]
-  p.H0_Hosp <- (1-exp(-0.20/52)) * prop.H0_SEV[3]
-  
-  p.SYM_SCS <- (1-exp(-0.11/52)) * prop.SYM_SEV[1]	# weekly rate of severe exacerbation with symbicort PRN
-  p.SYM_ED <- (1-exp(-0.11/52)) * prop.SYM_SEV[2]
-  p.SYM_Hosp <- (1-exp(-0.11/52)) * prop.SYM_SEV[3]
-  
-  p.H1_SCS <- (1-exp(-0.12/52)) * prop.H1_SEV[1]	# weekly rate of severe exacerbation with HCP management (low dose ICS + SABA)
-  p.H1_ED <- (1-exp(-0.12/52)) * prop.H1_SEV[2]
-  p.H1_Hosp <- (1-exp(-0.12/52)) * prop.H1_SEV[3]
+## Asthma Control Probability (proportion: mean % of weeks with well controlled asthma)l
+  p.H0_AC <- p.PRIM_AC <-  0.31
+  p.SYM_AC <- 0.34
+  p.H1_AC <- 0.44
   
 ## Transition probabilities #
+  
+#SEV (Severe Exacerbation)
+p.SCS_H0 <- p.ED_H0 <-p.Hosp_H0 <- 0 #Assumption that following severe exacerbation patient enters H1
+RR.NC <- 1.193 #RR of exacerbation for not controlled asthma
 
-  #H0
-    p.H0_H1   <- 0                     # weekly probability entering HCP from no HCP management (can't go to H1 without sev)
-    pAnn.H0_D   <-  mortality$b_mortality   # probability of death from no HCP management (turn into vector)
-    p.H0_D   <-  1 - (1-pAnn.H0_D)^(1/52)                 
+  #cumulative rate from SYGMA trials
+    r.H0_SEVtot <- 0.20 #syg1
+    r.SYM_SEVtot <- 0.11 #syg2
+    r.H1_SEVtot <- 0.12 #syg2
+
+  #Rate of exacerbation from controlled group
+    r.H0C_SEV <- r.H0_SEVtot/(p.H0_AC + RR.NC + RR.NC*p.H0_AC) #yaghoubi et al.2020
+    r.SYMC_SEV <- r.SYM_SEVtot/(p.SYM_AC + RR.NC + RR.NC*p.SYM_AC) #yaghoubi et al.2020
+    r.H1C_SEV <- r.H1_SEVtot/(p.H1_AC + RR.NC + RR.NC*p.H1_AC) #yaghoubi et al.2020
+
+  #Exacerbation proportion (SCS, ED, HOSP)
+    prop.H0_SEV <- prop.PRIM_SEV <- c(0.776,0.130,0.094)
+    prop.SYM_SEV <- c(0.819,0.102,0.079)
+    prop.H1_SEV <- c(0.784,0.152,0.064)
+ 
+  #Severe Exacerbation Rates * Exacerbation Proportion  
+    p.H0C_SCS <- (1-exp(-r.H0C_SEV/52)) * prop.H0_SEV[1] # weekly probability of severe exacerbation with no OTC or primatene OTC prn
+    p.H0C_ED <- (1-exp(-r.H0C_SEV/52)) * prop.H0_SEV[2]
+    p.H0C_Hosp <- (1-exp(-r.H0C_SEV/52)) * prop.H0_SEV[3]
     
-  #H1
-    pAnn.H1_H0  <- (1-0.79)                             # probability of non-adherence to HCP management
-    p.H1_H0  <- 1 - (1-pAnn.H1_H0)^(1/52)               # probability of non-adherence to HCP management
-    p.H1_D   <- p.H0_D 
+    p.SYMC_SCS <- (1-exp(-r.SYMC_SEV/52)) * prop.SYM_SEV[1]	# weekly rate of severe exacerbation with symbicort PRN
+    p.SYMC_ED <- (1-exp(-r.SYMC_SEV/52)) * prop.SYM_SEV[2]
+    p.SYMC_Hosp <- (1-exp(-r.SYMC_SEV/52)) * prop.SYM_SEV[3]
+    
+    p.H1C_SCS <- (1-exp(-r.H1C_SEV/52)) * prop.H1_SEV[1]	# weekly rate of severe exacerbation with HCP management (low dose ICS + SABA)
+    p.H1C_ED <- (1-exp(-r.H1C_SEV/52)) * prop.H1_SEV[2]
+    p.H1C_Hosp <- (1-exp(-r.H1C_SEV/52)) * prop.H1_SEV[3]
   
-  #SEV
-    p.SCS_H0 <- 0
-    p.ED_H0 <- 0
-    p.Hosp_H0 <- 0
-  
+    
   #Asthma Fatality (baseline)
     pAnn.SCS_D <- mortality$p.SCS_AF
     pAnn.ED_D <- mortality$p.ED_AF
     pAnn.Hosp_D <- mortality$p.HOSP_AF
         
-    p.SCS_D <- 1 - (1-pAnn.SCS_D)^(1/52)
-    p.ED_D <- 1 - (1-pAnn.ED_D)^(1/52)
-    p.Hosp_D <- 1 - (1-pAnn.Hosp_D)^(1/52)
+      p.SCS_D <- 1 - (1-pAnn.SCS_D)^(1/52)
+      p.ED_D <- 1 - (1-pAnn.ED_D)^(1/52)
+      p.Hosp_D <- 1 - (1-pAnn.Hosp_D)^(1/52)
 
   #Asthma Fatality * Spitzer OR for SABA overuse
     pAnn.SCS_D_PRIM <- mortality$pSp.SCS_AF
     pAnn.ED_D_PRIM <- mortality$pSp.ED_AF
     pAnn.Hosp_D_PRIM <- mortality$pSp.HOSP_AF
        
-    p.SCS_D_PRIM <- 1 - (1-pAnn.SCS_D_PRIM)^(1/52)
-    p.ED_D_PRIM <- 1 - (1-pAnn.ED_D_PRIM)^(1/52)
-    p.Hosp_D_PRIM <- 1 - (1-pAnn.Hosp_D_PRIM)^(1/52)
+      p.SCS_D_PRIM <- 1 - (1-pAnn.SCS_D_PRIM)^(1/52)
+      p.ED_D_PRIM <- 1 - (1-pAnn.ED_D_PRIM)^(1/52)
+      p.Hosp_D_PRIM <- 1 - (1-pAnn.Hosp_D_PRIM)^(1/52)
 
+
+  #H0
+    p.H0C_H1 <- p.H0NC_H1 <- 0                     # weekly probability entering HCP from no HCP management (can't go to H1 without sev)
+    pAnn.H0C_D <- pAnn.H0NC_D   <- mortality$b_mortality   # probability of death from no HCP management (turn into vector)
+    p.H0C_D <-p.H0NC_D  <-  1 - (1-pAnn.H0C_D)^(1/52)                 
     
-## Asthma Control Probability (proportion: mean % of weeks with well controlled asthma)l
-  p.H0_AC <- p.PRIM_AC <-  0.31
-  p.SYM_AC <- 0.34
-  p.H1_AC <- 0.44
-
+  #H1
+    pAnn.H1_H0  <- (1-0.79)                             # probability of non-adherence to HCP management
+    p.H1_H0  <- 1 - (1-pAnn.H1_H0)^(1/52)               # probability of non-adherence to HCP management
+    p.H1C_D <-p.H1NC_D <- p.H0C_D 
+  
+  
 ### Cost and utility inputs ###
 ## Direct Medical costs (per week)
   c.HCP     <- 53               # cost of HCP management
@@ -189,109 +198,26 @@ Markov <- function(v.M_1, n.t, v.n, d.c, d.e, trt=FALSE) {
     
   if(trt=="primatene"){
   
-  # run the simulation for no primatene
-  for (i in 2:(n.t + 1)) { 
-    for (j in 1:n.t) {
-      
-      # create the transition matrix for each model cycle
-      m.P <- matrix(c(1-min((p.H0_H1+p.H0_SCS+p.H0_ED+p.H0_Hosp+p.H0_D[j]),1), p.H0_H1, p.H0_SCS, p.H0_ED, p.H0_Hosp, p.H0_D[j], #H0 (no hcp mgt)
-                      p.H1_H0, 1 - min((p.H1_H0+p.H1_SCS+p.H1_ED+p.H1_Hosp+p.H1_D[j]),1), p.H1_SCS, p.H1_ED, p.H1_Hosp, p.H1_D[j], #H1 (hcp mgt)
-                      0, 1 - min((p.SCS_D_PRIM[j]+p.ED_D_PRIM[j]+p.Hosp_D_PRIM[j]+p.H0_D[j]),1), 0, 0, 0, min(p.SCS_D_PRIM[j]+p.H0_D[j],1), #SCS
-                      0, 1 - min((p.SCS_D_PRIM[j]+p.ED_D_PRIM[j]+p.Hosp_D_PRIM[j]+p.H0_D[j]),1), 0, 0, 0, min(p.ED_D_PRIM[j]+p.H0_D[j],1), #ED
-                      0, 1 - min((p.SCS_D_PRIM[j]+p.ED_D_PRIM[j]+p.Hosp_D_PRIM[j]+p.H0_D[j]),1), 0, 0, 0, min(p.Hosp_D_PRIM[j]+p.H0_D[j],1), # Hosp
-                      0, 0, 0, 0, 0, 1), #D
-                    nrow = n.s, ncol = n.s, byrow = T,
-                    dimnames = list(v.n, v.n))
-      # print(m.P) # show transition matrix for each model cycle to make sure p.H0_D is working - can remove after debugging
-      
-      # calculate the proportion of the cohort in each state at time t
-      m.TR[i, ] <- t(m.TR[i - 1, ]) %*% m.P
-    }
-  }  # close the loop for the individuals 
-
-  # create vectors of utility and costs for each state
-  v.c <- c((c.PRIM + (1- p.H0_AC)*c.AU), #H0
-           c.ICS_SABA + c.HCP + c.timeHCP + ((1- p.H1_AC)*c.AU), #H1
-           c.SCS + c.prodSCS, #SCS
-           c.ED + c.prodED, #ED
-           c.Hosp + c.prodHosp, #HOSP
-           0) #D
-  
-  v.u <- c(u.H0 + ((1- p.H0_AC)*du.AU), #H0
-           u.H1 + ((1- p.H1_AC)*du.AU), #H1
-           u.SCS, #SCS
-           u.ED, #ED
-           u.Hosp, #HOSP
-           0) #D
-  
-  v.uc <- c((1-p.H0_AC),
-            (1-p.H1_AC), 
-            0,
-            0,
-            0,
-            0)  
-  
-  } 
-  
-  else{
-  if(trt=="symbicort"){
-    
-  # run the simulation for symbicort
-  for (i in 2:(n.t + 1)) { 
-    for (j in 1:n.t) {
-      
-      # create the transition matrix for each model cycle
-      m.P <- matrix(c(1-min((p.H0_H1+p.H0_SCS+p.H0_ED+p.H0_Hosp+p.H0_D[j]),1), p.H0_H1, p.SYM_SCS, p.SYM_ED, p.SYM_Hosp, p.H0_D[j], #H0 (no hcp mgt)
-                      p.H1_H0, 1 - min((p.H1_H0+p.H1_SCS+p.H1_ED+p.H1_Hosp+p.H1_D[j]),1), p.H1_SCS, p.H1_ED, p.H1_Hosp, p.H1_D[j], #H1 (hcp mgt)
-                      0, 1 - min((p.SCS_D[j]+p.ED_D[j]+p.Hosp_D[j]+p.H0_D[j]),1), 0, 0, 0, min(p.SCS_D[j]+p.H0_D[j],1), #SCS
-                      0, 1 - min((p.SCS_D[j]+p.ED_D[j]+p.Hosp_D[j]+p.H0_D[j]),1), 0, 0, 0, min(p.ED_D[j]+p.H0_D[j],1), #ED
-                      0, 1 - min((p.SCS_D[j]+p.ED_D[j]+p.Hosp_D[j]+p.H0_D[j]),1), 0, 0, 0, min(p.Hosp_D[j]+p.H0_D[j],1), # Hosp
-                      0, 0, 0, 0, 0, 1), #D
-                    nrow = n.s, ncol = n.s, byrow = T,
-                    dimnames = list(v.n, v.n))
-      # print(m.P) # show transition matrix for each model cycle to make sure p.H0_D is working - can remove after debugging
-      
-      # calculate the proportion of the cohort in each state at time t
-      m.TR[i, ] <- t(m.TR[i - 1, ]) %*% m.P
-    }
-  }  # close the loop for the individuals 
-
-  # create vectors of utility and costs for each state
-  v.c <- c((c.SYM + (1- p.SYM_AC)*c.AU), #H0
-           c.ICS_SABA + c.HCP + c.timeHCP + ((1- p.H1_AC)*c.AU), #H1
-           c.SCS + c.prodSCS, #SCS
-           c.ED + c.prodED, #ED
-           c.Hosp + c.prodHosp, #HOSP
-           0) #D
-  
-  v.u <- c(u.H0 + ((1- p.SYM_AC)*du.AU), #H0
-           u.H1 + ((1- p.H1_AC)*du.AU), #H1
-           u.SCS, #SCS
-           u.ED, #ED
-           u.Hosp, #HOSP
-           0) #D
-  
-  v.uc <- c((1-p.SYM_AC),
-            (1-p.H1_AC), 
-            0,
-            0,
-            0,
-            0)  
-  }
-    
-  else{ #no treatment
-
-# run the simulation for no treatment
 for (i in 2:(n.t + 1)) { 
   for (j in 1:n.t) {
     
-    # create the transition matrix for each model cycle
-    m.P <- matrix(c(1-min((p.H0_H1+p.H0_SCS+p.H0_ED+p.H0_Hosp+p.H0_D[j]),1), p.H0_H1, p.H0_SCS, p.H0_ED, p.H0_Hosp, p.H0_D[j], #H0 (no hcp mgt)
-                    p.H1_H0, 1 - min((p.H1_H0+p.H1_SCS+p.H1_ED+p.H1_Hosp+p.H1_D[j]),1), p.H1_SCS, p.H1_ED, p.H1_Hosp, p.H1_D[j], #H1 (hcp mgt)
-                    0, 1 - min((p.SCS_D[j]+p.ED_D[j]+p.Hosp_D[j]+p.H0_D[j]),1), 0, 0, 0, min(p.SCS_D[j]+p.H0_D[j],1), #SCS
-                    0, 1 - min((p.SCS_D[j]+p.ED_D[j]+p.Hosp_D[j]+p.H0_D[j]),1), 0, 0, 0, min(p.ED_D[j]+p.H0_D[j],1), #ED
-                    0, 1 - min((p.SCS_D[j]+p.ED_D[j]+p.Hosp_D[j]+p.H0_D[j]),1), 0, 0, 0, min(p.Hosp_D[j]+p.H0_D[j],1), # Hosp
-                    0, 0, 0, 0, 0, 1), #D
+  H0C.rem <- min((0+0+p.H0C_SCS+p.H0C_ED+p.H0C_Hosp+p.H0C_D[j]),1)
+  H0NC.rem <- min((0+0+p.H0C_SCS*RR.NC+p.H0C_ED*RR.NC+p.H0C_Hosp*RR.NC+p.H0NC_D[j]),1)
+  H1C.rem <- min(((p.H1_H0*p.H0_AC)+(p.H1_H0*(1-p.H0_AC))+p.H1C_SCS+p.H1C_ED+p.H1C_Hosp+p.H1C_D[j]),1)
+  H1NC.rem <- min(((p.H1_H0*p.H0_AC)+(p.H1_H0*(1-p.H0_AC))+p.H1C_SCS*RR.NC+p.H1C_ED*RR.NC+p.H1C_Hosp*RR.NC+p.H1C_D[j]),1)
+  SEV.rem <- min((p.SCS_D_PRIM[j]+p.ED_D_PRIM[j]+p.Hosp_D_PRIM[j]+p.H0C_D[j]),1)
+    
+
+  # create the transition matrix for each model cycle
+    m.P <- matrix(c(
+                    (1-H0C.rem)*p.H0_AC,(1-H0C.rem)*(1-p.H0_AC), 0,0, p.H0C_SCS, p.H0C_ED, p.H0C_Hosp, p.H0C_D[j], #H0C
+                    (1-H0NC.rem)*p.H0_AC,(1-H0NC.rem)*(1-p.H0_AC), 0,0, p.H0C_SCS*RR.NC, p.H0C_ED*RR.NC, p.H0C_Hosp*RR.NC, p.H0NC_D[j], #H0NC 
+                    p.H1_H0*p.H0_AC,p.H1_H0*(1-p.H0_AC),(1 - H1C.rem)*p.H1_AC,(1 - H1C.rem)*(1-p.H1_AC),p.H1C_SCS,p.H1C_ED,p.H1C_Hosp, p.H1C_D[j], #H1C
+                    p.H1_H0*p.H0_AC,p.H1_H0*(1-p.H0_AC),(1 - H1NC.rem)*p.H1_AC,(1 - H1NC.rem)*(1-p.H1_AC),p.H1C_SCS*RR.NC,p.H1C_ED*RR.NC,p.H1C_Hosp*RR.NC, p.H1NC_D[j], #H1NC
+                    0, 0, (1 - SEV.rem)*p.H1_AC,(1-SEV.rem)*(1-p.H1_AC), 0, 0, 0, min(p.SCS_D_PRIM[j]+p.H0C_D[j],1), #SCS
+                    0, 0, (1 - SEV.rem)*p.H1_AC,(1-SEV.rem)*(1-p.H1_AC), 0, 0, 0, min(p.ED_D_PRIM[j]+p.H0C_D[j],1), #ED
+                    0, 0, (1 - SEV.rem)*p.H1_AC,(1-SEV.rem)*(1-p.H1_AC), 0, 0, 0, min(p.Hosp_D_PRIM[j]+p.H0C_D[j],1), # Hosp
+                    0, 0, 0, 0, 0, 0, 0, 1), #D
                   nrow = n.s, ncol = n.s, byrow = T,
                   dimnames = list(v.n, v.n))
     
@@ -303,40 +229,153 @@ for (i in 2:(n.t + 1)) {
 }  # close the loop for the individuals 
 
 
-    
   # create vectors of utility and costs for each state
-  v.c <- c(((1- p.H0_AC)*c.AU), #H0
-           c.ICS_SABA + c.HCP + c.timeHCP + ((1- p.H1_AC)*c.AU), #H1
+  v.c <- c(
+           c.PRIM, #H0C
+           c.PRIM + c.AU, #H0NC
+           c.ICS_SABA + c.HCP + c.timeHCP, #H1C
+           c.ICS_SABA + c.HCP + c.timeHCP + c.AU, #H1C
            c.SCS + c.prodSCS, #SCS
            c.ED + c.prodED, #ED
            c.Hosp + c.prodHosp, #HOSP
            0) #D
   
-  v.u <- c(u.H0 + ((1- p.H0_AC)*du.AU), #H0
-           u.H1 + ((1- p.H1_AC)*du.AU), #H1
+  v.u <- c(
+           u.H0, #H0C
+           u.H0 + du.AU, #H0NC
+           u.H1, #H1C
+           u.H1 + du.AU, #H1NC
            u.SCS, #SCS
            u.ED, #ED
            u.Hosp, #HOSP
            0) #D
   
-  v.uc <- c((1-p.H0_AC),
-            (1-p.H1_AC), 
-            0,
-            0,
-            0,
-            0)  
+  } 
+  
+  else{
+  if(trt=="symbicort"){
+    
+  # run the simulation for symbicort
+ for (i in 2:(n.t + 1)) { 
+  for (j in 1:n.t) {
+    
+H0C.rem <- min((0+0+p.SYMC_SCS+p.SYMC_ED+p.SYMC_Hosp+p.H0C_D[j]),1)
+H0NC.rem <- min((0+0+p.SYMC_SCS*RR.NC+p.SYMC_ED*RR.NC+p.SYMC_Hosp*RR.NC+p.H0NC_D[j]),1)
+H1C.rem <- min(((p.H1_H0*p.H0_AC)+(p.H1_H0*(1-p.H0_AC))+p.H1C_SCS+p.H1C_ED+p.H1C_Hosp+p.H1C_D[j]),1)
+H1NC.rem <- min(((p.H1_H0*p.H0_AC)+(p.H1_H0*(1-p.H0_AC))+p.H1C_SCS*RR.NC+p.H1C_ED*RR.NC+p.H1C_Hosp*RR.NC+p.H1C_D[j]),1)
+SEV.rem <- min((p.SCS_D[j]+p.ED_D[j]+p.Hosp_D[j]+p.H0C_D[j]),1)
+    
+
+  # create the transition matrix for each model cycle
+    m.P <- matrix(c(
+                    (1-H0C.rem)*p.H0_AC,(1-H0C.rem)*(1-p.H0_AC), 0,0, p.SYMC_SCS, p.SYMC_ED, p.SYMC_Hosp, p.H0C_D[j], #H0C
+                    (1-H0NC.rem)*p.H0_AC,(1-H0NC.rem)*(1-p.H0_AC), 0,0, p.SYMC_SCS*RR.NC, p.SYMC_ED*RR.NC, p.SYMC_Hosp*RR.NC, p.H0NC_D[j], #H0NC 
+                    p.H1_H0*p.H0_AC,p.H1_H0*(1-p.H0_AC),(1 - H1C.rem)*p.H1_AC,(1 - H1C.rem)*(1-p.H1_AC),p.H1C_SCS,p.H1C_ED,p.H1C_Hosp, p.H1C_D[j], #H1C
+                    p.H1_H0*p.H0_AC,p.H1_H0*(1-p.H0_AC),(1 - H1NC.rem)*p.H1_AC,(1 - H1NC.rem)*(1-p.H1_AC),p.H1C_SCS*RR.NC,p.H1C_ED*RR.NC,p.H1C_Hosp*RR.NC, p.H1NC_D[j], #H1NC
+                    0, 0, (1 - SEV.rem)*p.H1_AC,(1-SEV.rem)*(1-p.H1_AC), 0, 0, 0, min(p.SCS_D[j]+p.H0C_D[j],1), #SCS
+                    0, 0, (1 - SEV.rem)*p.H1_AC,(1-SEV.rem)*(1-p.H1_AC), 0, 0, 0, min(p.ED_D[j]+p.H0C_D[j],1), #ED
+                    0, 0, (1 - SEV.rem)*p.H1_AC,(1-SEV.rem)*(1-p.H1_AC), 0, 0, 0, min(p.Hosp_D[j]+p.H0C_D[j],1), # Hosp
+                    0, 0, 0, 0, 0, 0, 0, 1), #D
+                  nrow = n.s, ncol = n.s, byrow = T,
+                  dimnames = list(v.n, v.n))
+    
+    # print(m.P) # show transition matrix for each model cycle to make sure p.H0_D is working - can remove after debugging
+    
+    # calculate the proportion of the cohort in each state at time t
+    m.TR[i, ] <- t(m.TR[i - 1, ]) %*% m.P
+  }
+}  # close the loop for the individuals
+
+  # create vectors of utility and costs for each state
+  v.c <- c(
+           c.SYM, #H0C
+           c.SYM + c.AU, #H0NC
+           c.ICS_SABA + c.HCP + c.timeHCP, #H1C
+           c.ICS_SABA + c.HCP + c.timeHCP + c.AU, #H1NC
+           c.SCS + c.prodSCS, #SCS
+           c.ED + c.prodED, #ED
+           c.Hosp + c.prodHosp, #HOSP
+           0) #D
+  
+  v.u <- c(
+           u.H0, #H0C
+           u.H0 + du.AU, #H0NC
+           u.H1, #H1C
+           u.H1 + du.AU, #H1NC
+           u.SCS, #SCS
+           u.ED, #ED
+           u.Hosp, #HOSP
+           0) #D
+  
+  }
+    
+  else{ #no treatment
+
+
+# run the simulation for no treatment
+for (i in 2:(n.t + 1)) { 
+  for (j in 1:n.t) {
+    
+H0C.rem <- min((0+0+p.H0C_SCS+p.H0C_ED+p.H0C_Hosp+p.H0C_D[j]),1)
+H0NC.rem <- min((0+0+p.H0C_SCS*RR.NC+p.H0C_ED*RR.NC+p.H0C_Hosp*RR.NC+p.H0NC_D[j]),1)
+H1C.rem <- min(((p.H1_H0*p.H0_AC)+(p.H1_H0*(1-p.H0_AC))+p.H1C_SCS+p.H1C_ED+p.H1C_Hosp+p.H1C_D[j]),1)
+H1NC.rem <- min(((p.H1_H0*p.H0_AC)+(p.H1_H0*(1-p.H0_AC))+p.H1C_SCS*RR.NC+p.H1C_ED*RR.NC+p.H1C_Hosp*RR.NC+p.H1C_D[j]),1)
+SEV.rem <- min((p.SCS_D[j]+p.ED_D[j]+p.Hosp_D[j]+p.H0C_D[j]),1)
+    
+
+  # create the transition matrix for each model cycle
+    m.P <- matrix(c(
+                    (1-H0C.rem)*p.H0_AC,(1-H0C.rem)*(1-p.H0_AC), 0,0, p.H0C_SCS, p.H0C_ED, p.H0C_Hosp, p.H0C_D[j], #H0C
+                    (1-H0NC.rem)*p.H0_AC,(1-H0NC.rem)*(1-p.H0_AC), 0,0, p.H0C_SCS*RR.NC, p.H0C_ED*RR.NC, p.H0C_Hosp*RR.NC, p.H0NC_D[j], #H0NC 
+                    p.H1_H0*p.H0_AC,p.H1_H0*(1-p.H0_AC),(1 - H1C.rem)*p.H1_AC,(1 - H1C.rem)*(1-p.H1_AC),p.H1C_SCS,p.H1C_ED,p.H1C_Hosp, p.H1C_D[j], #H1C
+                    p.H1_H0*p.H0_AC,p.H1_H0*(1-p.H0_AC),(1 - H1NC.rem)*p.H1_AC,(1 - H1NC.rem)*(1-p.H1_AC),p.H1C_SCS*RR.NC,p.H1C_ED*RR.NC,p.H1C_Hosp*RR.NC, p.H1NC_D[j], #H1NC
+                    0, 0, (1 - SEV.rem)*p.H1_AC,(1-SEV.rem)*(1-p.H1_AC), 0, 0, 0, min(p.SCS_D[j]+p.H0C_D[j],1), #SCS
+                    0, 0, (1 - SEV.rem)*p.H1_AC,(1-SEV.rem)*(1-p.H1_AC), 0, 0, 0, min(p.ED_D[j]+p.H0C_D[j],1), #ED
+                    0, 0, (1 - SEV.rem)*p.H1_AC,(1-SEV.rem)*(1-p.H1_AC), 0, 0, 0, min(p.Hosp_D[j]+p.H0C_D[j],1), # Hosp
+                    0, 0, 0, 0, 0, 0, 0, 1), #D
+                  nrow = n.s, ncol = n.s, byrow = T,
+                  dimnames = list(v.n, v.n))
+    
+    # print(m.P) # show transition matrix for each model cycle to make sure p.H0_D is working - can remove after debugging
+    
+    # calculate the proportion of the cohort in each state at time t
+    m.TR[i, ] <- t(m.TR[i - 1, ]) %*% m.P
+  }
+}  # close the loop for the individuals 
+
+
+  # create vectors of utility and costs for each state
+  v.c <- c(
+           0, #H0C
+           c.AU, #H0NC
+           c.ICS_SABA + c.HCP + c.timeHCP, #H1C
+           c.ICS_SABA + c.HCP + c.timeHCP + c.AU, #H1NC
+           c.SCS + c.prodSCS, #SCS
+           c.ED + c.prodED, #ED
+           c.Hosp + c.prodHosp, #HOSP
+           0) #D
+  
+  v.u <- c(
+           u.H0, #H0C
+           u.H0 + du.AU, #H0NC
+           u.H1, #H1C
+           u.H1 + du.AU, #H1NC
+           u.SCS, #SCS
+           u.ED, #ED
+           u.Hosp, #HOSP
+           0) #D
+  
+
 }
  
 }
 
-tuc <- m.TR %*% v.uc
-tc <-( m.TR %*% v.c) + (tuc * c.AU)  # calculate the costs, vc should be 0 for severe exac state
-te <- m.TR %*% v.u + (tuc %*% du.AU)  # calculate the QALYs, vu should be 0 for severe exac state
+tc <-( m.TR %*% v.c)  # calculate the costs
+te <-( m.TR %*% v.u ) # calculate the QALYs
 
 
 tc_hat <- t(tc) %*% v.dwc  # total (discounted) cost 
 te_hat <- t(te) %*% v.dwe  # total (discounted) QALY 
-tuc_hat <- t(tuc)%*% v.dwe # total (discounted) Asthma uncontrolled
 
 results <- list(m.TR = m.TR, tc_hat = tc_hat, te_hat = te_hat) # store the results from the simulation in a list  
 return(results)  # return the results
@@ -358,20 +397,28 @@ v.C <- c(sim_markov_no_trt$tc_hat, sim_markov_PRIM$tc_hat, sim_markov_SYMB$tc_ha
 # store the mean QALYs of each strategy in a new variable E (vector effects)
 v.E <- c(sim_markov_no_trt$te_hat, sim_markov_PRIM$te_hat, sim_markov_SYMB$te_hat)
 
-delta.C <- v.C[2] - v.C[1]            # calculate incremental costs
-delta.E <- v.E[2] - v.E[1]            # calculate incremental QALYs
-ICER <- delta.C / delta.E             # calculate the ICER
-results <- c(delta.C, delta.E, ICER)  # store the values in a new variable
+delta.C2 <- v.C[2] - v.C[1]            # calculate incremental costs
+delta.E2 <- v.E[2] - v.E[1]            # calculate incremental QALYs
+ICER2 <- delta.C2 / delta.E2             # calculate the ICER
+
+delta.C3 <- v.C[3] - v.C[1]            # calculate incremental costs
+delta.E3 <- v.E[3] - v.E[1]            # calculate incremental QALYs
+ICER3 <- delta.C3 / delta.E3             # calculate the ICER
+
+  # results <- c(delta.C, delta.E, ICER)  # store the values in a new variable
 
 # Create full incremental cost-effectiveness analysis table
 table_markov <- data.frame(
-  round(v.C, 0),              # costs per arm
-  round(v.E, 3),              # health outcomes per arm
-  c("", round(delta.C, 0)),   # incremental costs
-  c("", round(delta.E, 3)),   # incremental QALYs
-  c("", round(ICER, 0))       # ICER
+  round(v.C, 2),              # costs per arm
+  round(v.E, 5),              # health outcomes per arm
+  c("", round(delta.C2, 2), round(delta.C3,2)),   # incremental costs
+  c("", round(delta.E2, 5), round(delta.E3,5)),   # incremental QALYs
+  c("", round(ICER2, 2), round(ICER3,2))       # ICER
 )
 rownames(table_markov) = v.Trt  # name the rows
 colnames(table_markov) = c("Costs", "QALYs","Incremental Costs", "QALYs Gained", "ICER") # name the columns
 table_markov                    # print the table 
+
+write.table(table_markov, file = "CEA_markov_v1.csv", sep = ",", quote = FALSE, row.names = F)
+
 ```
