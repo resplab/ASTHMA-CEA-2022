@@ -71,7 +71,7 @@ mortality <- read_csv("mortality.csv")
   
 #SEV (Severe Exacerbation)
 p.SCS_H0 <- p.ED_H0 <-p.Hosp_H0 <- 0 #Assumption that following severe exacerbation patient enters H1
-RR.NC <- 1.193 #RR of exacerbation for not controlled asthma
+RR.NC <- 1.201 #RR of exacerbation for not controlled asthma
 
   #cumulative rate from SYGMA trials
     r.H0_SEVtot <- 0.20 #syg1
