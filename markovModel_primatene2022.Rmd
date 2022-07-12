@@ -44,7 +44,7 @@ library(tidyverse)
 mortality <- read_csv("mortality.csv")
 
 ### Model input
-  n.t   <- 20 # (52*(100-23))          # time horizon, lifetime from 23yrs, 1 week cycle
+  n.t   <- (52*(100-23)) #20          # time horizon, lifetime from 23yrs, 1 week cycle
   
   v.n   <- c("H0","H1","SCS","ED","HOSP","D")      # No HCP MGT (H0), HCP MGT (H1), Severe Exacerbation (SEV), Death (D)
   n.s   <- length(v.n)                 # the number of health states
@@ -202,7 +202,7 @@ Markov <- function(v.M_1, n.t, v.n, d.c, d.e, trt=FALSE) {
                       0, 0, 0, 0, 0, 1), #D
                     nrow = n.s, ncol = n.s, byrow = T,
                     dimnames = list(v.n, v.n))
-      print(m.P) # show transition matrix for each model cycle to make sure p.H0_D is working - can remove after debugging
+      # print(m.P) # show transition matrix for each model cycle to make sure p.H0_D is working - can remove after debugging
       
       # calculate the proportion of the cohort in each state at time t
       m.TR[i, ] <- t(m.TR[i - 1, ]) %*% m.P
@@ -249,7 +249,7 @@ Markov <- function(v.M_1, n.t, v.n, d.c, d.e, trt=FALSE) {
                       0, 0, 0, 0, 0, 1), #D
                     nrow = n.s, ncol = n.s, byrow = T,
                     dimnames = list(v.n, v.n))
-      print(m.P) # show transition matrix for each model cycle to make sure p.H0_D is working - can remove after debugging
+      # print(m.P) # show transition matrix for each model cycle to make sure p.H0_D is working - can remove after debugging
       
       # calculate the proportion of the cohort in each state at time t
       m.TR[i, ] <- t(m.TR[i - 1, ]) %*% m.P
@@ -295,7 +295,7 @@ for (i in 2:(n.t + 1)) {
                   nrow = n.s, ncol = n.s, byrow = T,
                   dimnames = list(v.n, v.n))
     
-    print(m.P) # show transition matrix for each model cycle to make sure p.H0_D is working - can remove after debugging
+    # print(m.P) # show transition matrix for each model cycle to make sure p.H0_D is working - can remove after debugging
     
     # calculate the proportion of the cohort in each state at time t
     m.TR[i, ] <- t(m.TR[i - 1, ]) %*% m.P
@@ -354,9 +354,9 @@ sim_markov_SYMB    <- Markov(v.M_1, n.t, v.n, d.c, d.e, trt = "symbicort")  # ru
 ################################# Cost-effectiveness analysis #############################
 
 # store the mean costs of each strategy in a new variable C (vector costs)
-v.C <- c(sim_markov_no_trt$tc_hat, sim_markov_PRIM$tc_hat) 
+v.C <- c(sim_markov_no_trt$tc_hat, sim_markov_PRIM$tc_hat, sim_markov_SYMB$tc_hat) 
 # store the mean QALYs of each strategy in a new variable E (vector effects)
-v.E <- c(sim_markov_no_trt$te_hat, sim_markov_PRIM$te_hat)
+v.E <- c(sim_markov_no_trt$te_hat, sim_markov_PRIM$te_hat, sim_markov_SYMB$te_hat)
 
 delta.C <- v.C[2] - v.C[1]            # calculate incremental costs
 delta.E <- v.E[2] - v.E[1]            # calculate incremental QALYs
