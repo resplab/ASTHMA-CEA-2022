@@ -71,38 +71,57 @@ mortality <- read_csv("mortality.csv")
   
 #SEV (Severe Exacerbation)
 p.SCS_H0 <- p.ED_H0 <-p.Hosp_H0 <- 0 #Assumption that following severe exacerbation patient enters H1
-RR.NC <- 1.201 #RR of exacerbation for not controlled asthma
-
-  #cumulative rate from SYGMA trials
-    r.H0_SEVtot <- 0.20 #syg1
-    r.SYM_SEVtot <- 0.11 #syg2
-    r.H1_SEVtot <- 0.12 #syg2
-
-  #Rate of exacerbation from controlled group
-    r.H0C_SEV <- r.H0_SEVtot/(p.H0_AC + RR.NC + RR.NC*p.H0_AC) #yaghoubi et al.2020
-    r.SYMC_SEV <- r.SYM_SEVtot/(p.SYM_AC + RR.NC + RR.NC*p.SYM_AC) #yaghoubi et al.2020
-    r.H1C_SEV <- r.H1_SEVtot/(p.H1_AC + RR.NC + RR.NC*p.H1_AC) #yaghoubi et al.2020
+RR.NC <- 1.201 #RATE ratio of exacerbation for not controlled asthma
 
   #Exacerbation proportion (SCS, ED, HOSP)
     prop.H0_SEV <- prop.PRIM_SEV <- c(0.776,0.130,0.094)
     prop.SYM_SEV <- c(0.819,0.102,0.079)
     prop.H1_SEV <- c(0.784,0.152,0.064)
  
-  #Severe Exacerbation Rates * Exacerbation Proportion  
-    p.H0C_SCS <- (1-exp(-r.H0C_SEV/52)) * prop.H0_SEV[1] # weekly probability of severe exacerbation with no OTC or primatene OTC prn
-    p.H0C_ED <- (1-exp(-r.H0C_SEV/52)) * prop.H0_SEV[2]
-    p.H0C_Hosp <- (1-exp(-r.H0C_SEV/52)) * prop.H0_SEV[3]
+  #cumulative rate from SYGMA trials
+    r.H0_SEVtot <- 0.20 #syg1
+    r.SYM_SEVtot <- 0.11 #syg2
+    r.H1_SEVtot <- 0.12 #syg2
+
+  #Rate of exacerbation by control group
+    #controlled (C)
+      r.H0C_SEV <- r.H0_SEVtot/(p.H0_AC + RR.NC - RR.NC*p.H0_AC) #yaghoubi et al.2020
+      r.SYMC_SEV <- r.SYM_SEVtot/(p.SYM_AC + RR.NC - RR.NC*p.SYM_AC) #yaghoubi et al.2020
+      r.H1C_SEV <- r.H1_SEVtot/(p.H1_AC + RR.NC - RR.NC*p.H1_AC) #yaghoubi et al.2020
+
+    #Not controlled (NC)
+      r.H0NC_SEV <- r.H0C_SEV * RR.NC
+      r.SYMNC_SEV <- r.SYMC_SEV * RR.NC
+      r.H1NC_SEV <- r.H1C_SEV * RR.NC
+ 
+  #Severe Exacerbation Rates * Exacerbation Proportion
+    #controlled (C)
+      p.H0C_SCS <- (1-exp(-r.H0C_SEV/52)) * prop.H0_SEV[1] # weekly probability of severe exacerbation with no OTC or primatene OTC prn
+      p.H0C_ED <- (1-exp(-r.H0C_SEV/52)) * prop.H0_SEV[2]
+      p.H0C_Hosp <- (1-exp(-r.H0C_SEV/52)) * prop.H0_SEV[3]
+      
+      p.SYMC_SCS <- (1-exp(-r.SYMC_SEV/52)) * prop.SYM_SEV[1]	# weekly rate of severe exacerbation with symbicort PRN
+      p.SYMC_ED <- (1-exp(-r.SYMC_SEV/52)) * prop.SYM_SEV[2]
+      p.SYMC_Hosp <- (1-exp(-r.SYMC_SEV/52)) * prop.SYM_SEV[3]
+      
+      p.H1C_SCS <- (1-exp(-r.H1C_SEV/52)) * prop.H1_SEV[1]	# weekly rate of severe exacerbation with HCP management (low dose ICS + SABA)
+      p.H1C_ED <- (1-exp(-r.H1C_SEV/52)) * prop.H1_SEV[2]
+      p.H1C_Hosp <- (1-exp(-r.H1C_SEV/52)) * prop.H1_SEV[3]
     
-    p.SYMC_SCS <- (1-exp(-r.SYMC_SEV/52)) * prop.SYM_SEV[1]	# weekly rate of severe exacerbation with symbicort PRN
-    p.SYMC_ED <- (1-exp(-r.SYMC_SEV/52)) * prop.SYM_SEV[2]
-    p.SYMC_Hosp <- (1-exp(-r.SYMC_SEV/52)) * prop.SYM_SEV[3]
-    
-    p.H1C_SCS <- (1-exp(-r.H1C_SEV/52)) * prop.H1_SEV[1]	# weekly rate of severe exacerbation with HCP management (low dose ICS + SABA)
-    p.H1C_ED <- (1-exp(-r.H1C_SEV/52)) * prop.H1_SEV[2]
-    p.H1C_Hosp <- (1-exp(-r.H1C_SEV/52)) * prop.H1_SEV[3]
-  
-    
-  #Asthma Fatality (baseline)
+    #Not controlled (NC)
+      p.H0NC_SCS <- (1-exp(-r.H0NC_SEV/52)) * prop.H0_SEV[1] # weekly probability of severe exacerbation with no OTC or primatene OTC prn
+      p.H0NC_ED <- (1-exp(-r.H0NC_SEV/52)) * prop.H0_SEV[2]
+      p.H0NC_Hosp <- (1-exp(-r.H0NC_SEV/52)) * prop.H0_SEV[3]
+      
+      p.SYMNC_SCS <- (1-exp(-r.SYMNC_SEV/52)) * prop.SYM_SEV[1]	# weekly rate of severe exacerbation with symbicort PRN
+      p.SYMNC_ED <- (1-exp(-r.SYMNC_SEV/52)) * prop.SYM_SEV[2]
+      p.SYMNC_Hosp <- (1-exp(-r.SYMNC_SEV/52)) * prop.SYM_SEV[3]
+      
+      p.H1NC_SCS <- (1-exp(-r.H1NC_SEV/52)) * prop.H1_SEV[1]	# weekly rate of severe exacerbation with HCP management (low dose ICS + SABA)
+      p.H1NC_ED <- (1-exp(-r.H1NC_SEV/52)) * prop.H1_SEV[2]
+      p.H1NC_Hosp <- (1-exp(-r.H1NC_SEV/52)) * prop.H1_SEV[3]
+
+#Asthma Fatality (baseline)
     pAnn.SCS_D <- mortality$p.SCS_AF
     pAnn.ED_D <- mortality$p.ED_AF
     pAnn.Hosp_D <- mortality$p.HOSP_AF
@@ -202,18 +221,18 @@ for (i in 2:(n.t + 1)) {
   for (j in 1:n.t) {
     
   H0C.rem <- min((0+0+p.H0C_SCS+p.H0C_ED+p.H0C_Hosp+p.H0C_D[j]),1)
-  H0NC.rem <- min((0+0+p.H0C_SCS*RR.NC+p.H0C_ED*RR.NC+p.H0C_Hosp*RR.NC+p.H0NC_D[j]),1)
+  H0NC.rem <- min((0+0+p.H0NC_SCS+p.H0NC_ED+p.H0NC_Hosp+p.H0NC_D[j]),1)
   H1C.rem <- min(((p.H1_H0*p.H0_AC)+(p.H1_H0*(1-p.H0_AC))+p.H1C_SCS+p.H1C_ED+p.H1C_Hosp+p.H1C_D[j]),1)
-  H1NC.rem <- min(((p.H1_H0*p.H0_AC)+(p.H1_H0*(1-p.H0_AC))+p.H1C_SCS*RR.NC+p.H1C_ED*RR.NC+p.H1C_Hosp*RR.NC+p.H1C_D[j]),1)
+  H1NC.rem <- min(((p.H1_H0*p.H0_AC)+(p.H1_H0*(1-p.H0_AC))+p.H1NC_SCS+p.H1NC_ED+p.H1NC_Hosp+p.H1C_D[j]),1)
   SEV.rem <- min((p.SCS_D_PRIM[j]+p.ED_D_PRIM[j]+p.Hosp_D_PRIM[j]+p.H0C_D[j]),1)
     
 
   # create the transition matrix for each model cycle
     m.P <- matrix(c(
                     (1-H0C.rem)*p.H0_AC,(1-H0C.rem)*(1-p.H0_AC), 0,0, p.H0C_SCS, p.H0C_ED, p.H0C_Hosp, p.H0C_D[j], #H0C
-                    (1-H0NC.rem)*p.H0_AC,(1-H0NC.rem)*(1-p.H0_AC), 0,0, p.H0C_SCS*RR.NC, p.H0C_ED*RR.NC, p.H0C_Hosp*RR.NC, p.H0NC_D[j], #H0NC 
+                    (1-H0NC.rem)*p.H0_AC,(1-H0NC.rem)*(1-p.H0_AC), 0,0, p.H0NC_SCS, p.H0NC_ED, p.H0NC_Hosp, p.H0NC_D[j], #H0NC 
                     p.H1_H0*p.H0_AC,p.H1_H0*(1-p.H0_AC),(1 - H1C.rem)*p.H1_AC,(1 - H1C.rem)*(1-p.H1_AC),p.H1C_SCS,p.H1C_ED,p.H1C_Hosp, p.H1C_D[j], #H1C
-                    p.H1_H0*p.H0_AC,p.H1_H0*(1-p.H0_AC),(1 - H1NC.rem)*p.H1_AC,(1 - H1NC.rem)*(1-p.H1_AC),p.H1C_SCS*RR.NC,p.H1C_ED*RR.NC,p.H1C_Hosp*RR.NC, p.H1NC_D[j], #H1NC
+                    p.H1_H0*p.H0_AC,p.H1_H0*(1-p.H0_AC),(1 - H1NC.rem)*p.H1_AC,(1 - H1NC.rem)*(1-p.H1_AC),p.H1NC_SCS,p.H1NC_ED,p.H1NC_Hosp, p.H1NC_D[j], #H1NC
                     0, 0, (1 - SEV.rem)*p.H1_AC,(1-SEV.rem)*(1-p.H1_AC), 0, 0, 0, min(p.SCS_D_PRIM[j]+p.H0C_D[j],1), #SCS
                     0, 0, (1 - SEV.rem)*p.H1_AC,(1-SEV.rem)*(1-p.H1_AC), 0, 0, 0, min(p.ED_D_PRIM[j]+p.H0C_D[j],1), #ED
                     0, 0, (1 - SEV.rem)*p.H1_AC,(1-SEV.rem)*(1-p.H1_AC), 0, 0, 0, min(p.Hosp_D_PRIM[j]+p.H0C_D[j],1), # Hosp
@@ -260,18 +279,18 @@ for (i in 2:(n.t + 1)) {
   for (j in 1:n.t) {
     
 H0C.rem <- min((0+0+p.SYMC_SCS+p.SYMC_ED+p.SYMC_Hosp+p.H0C_D[j]),1)
-H0NC.rem <- min((0+0+p.SYMC_SCS*RR.NC+p.SYMC_ED*RR.NC+p.SYMC_Hosp*RR.NC+p.H0NC_D[j]),1)
+H0NC.rem <- min((0+0+p.SYMNC_SCS+p.SYMNC_ED+p.SYMNC_Hosp+p.H0NC_D[j]),1)
 H1C.rem <- min(((p.H1_H0*p.H0_AC)+(p.H1_H0*(1-p.H0_AC))+p.H1C_SCS+p.H1C_ED+p.H1C_Hosp+p.H1C_D[j]),1)
-H1NC.rem <- min(((p.H1_H0*p.H0_AC)+(p.H1_H0*(1-p.H0_AC))+p.H1C_SCS*RR.NC+p.H1C_ED*RR.NC+p.H1C_Hosp*RR.NC+p.H1C_D[j]),1)
+H1NC.rem <- min(((p.H1_H0*p.H0_AC)+(p.H1_H0*(1-p.H0_AC))+p.H1NC_SCS+p.H1NC_ED+p.H1NC_Hosp+p.H1C_D[j]),1)
 SEV.rem <- min((p.SCS_D[j]+p.ED_D[j]+p.Hosp_D[j]+p.H0C_D[j]),1)
     
 
   # create the transition matrix for each model cycle
     m.P <- matrix(c(
-                    (1-H0C.rem)*p.H0_AC,(1-H0C.rem)*(1-p.H0_AC), 0,0, p.SYMC_SCS, p.SYMC_ED, p.SYMC_Hosp, p.H0C_D[j], #H0C
-                    (1-H0NC.rem)*p.H0_AC,(1-H0NC.rem)*(1-p.H0_AC), 0,0, p.SYMC_SCS*RR.NC, p.SYMC_ED*RR.NC, p.SYMC_Hosp*RR.NC, p.H0NC_D[j], #H0NC 
-                    p.H1_H0*p.H0_AC,p.H1_H0*(1-p.H0_AC),(1 - H1C.rem)*p.H1_AC,(1 - H1C.rem)*(1-p.H1_AC),p.H1C_SCS,p.H1C_ED,p.H1C_Hosp, p.H1C_D[j], #H1C
-                    p.H1_H0*p.H0_AC,p.H1_H0*(1-p.H0_AC),(1 - H1NC.rem)*p.H1_AC,(1 - H1NC.rem)*(1-p.H1_AC),p.H1C_SCS*RR.NC,p.H1C_ED*RR.NC,p.H1C_Hosp*RR.NC, p.H1NC_D[j], #H1NC
+                    (1-H0C.rem)*p.SYM_AC,(1-H0C.rem)*(1-p.SYM_AC), 0,0, p.SYMC_SCS, p.SYMC_ED, p.SYMC_Hosp, p.H0C_D[j], #H0C
+                    (1-H0NC.rem)*p.SYM_AC,(1-H0NC.rem)*(1-p.SYM_AC), 0,0, p.SYMNC_SCS, p.SYMNC_ED, p.SYMNC_Hosp, p.H0NC_D[j], #H0NC 
+                    p.H1_H0*p.SYM_AC,p.H1_H0*(1-p.SYM_AC),(1 - H1C.rem)*p.H1_AC,(1 - H1C.rem)*(1-p.H1_AC),p.H1C_SCS,p.H1C_ED,p.H1C_Hosp, p.H1C_D[j], #H1C
+                    p.H1_H0*p.SYM_AC,p.H1_H0*(1-p.SYM_AC),(1 - H1NC.rem)*p.H1_AC,(1 - H1NC.rem)*(1-p.H1_AC),p.H1NC_SCS,p.H1NC_ED,p.H1NC_Hosp, p.H1NC_D[j], #H1NC
                     0, 0, (1 - SEV.rem)*p.H1_AC,(1-SEV.rem)*(1-p.H1_AC), 0, 0, 0, min(p.SCS_D[j]+p.H0C_D[j],1), #SCS
                     0, 0, (1 - SEV.rem)*p.H1_AC,(1-SEV.rem)*(1-p.H1_AC), 0, 0, 0, min(p.ED_D[j]+p.H0C_D[j],1), #ED
                     0, 0, (1 - SEV.rem)*p.H1_AC,(1-SEV.rem)*(1-p.H1_AC), 0, 0, 0, min(p.Hosp_D[j]+p.H0C_D[j],1), # Hosp
@@ -317,18 +336,18 @@ for (i in 2:(n.t + 1)) {
   for (j in 1:n.t) {
     
 H0C.rem <- min((0+0+p.H0C_SCS+p.H0C_ED+p.H0C_Hosp+p.H0C_D[j]),1)
-H0NC.rem <- min((0+0+p.H0C_SCS*RR.NC+p.H0C_ED*RR.NC+p.H0C_Hosp*RR.NC+p.H0NC_D[j]),1)
+H0NC.rem <- min((0+0+p.H0NC_SCS+p.H0NC_ED+p.H0NC_Hosp+p.H0NC_D[j]),1)
 H1C.rem <- min(((p.H1_H0*p.H0_AC)+(p.H1_H0*(1-p.H0_AC))+p.H1C_SCS+p.H1C_ED+p.H1C_Hosp+p.H1C_D[j]),1)
-H1NC.rem <- min(((p.H1_H0*p.H0_AC)+(p.H1_H0*(1-p.H0_AC))+p.H1C_SCS*RR.NC+p.H1C_ED*RR.NC+p.H1C_Hosp*RR.NC+p.H1C_D[j]),1)
+H1NC.rem <- min(((p.H1_H0*p.H0_AC)+(p.H1_H0*(1-p.H0_AC))+p.H1NC_SCS+p.H1NC_ED+p.H1NC_Hosp+p.H1C_D[j]),1)
 SEV.rem <- min((p.SCS_D[j]+p.ED_D[j]+p.Hosp_D[j]+p.H0C_D[j]),1)
     
 
   # create the transition matrix for each model cycle
     m.P <- matrix(c(
                     (1-H0C.rem)*p.H0_AC,(1-H0C.rem)*(1-p.H0_AC), 0,0, p.H0C_SCS, p.H0C_ED, p.H0C_Hosp, p.H0C_D[j], #H0C
-                    (1-H0NC.rem)*p.H0_AC,(1-H0NC.rem)*(1-p.H0_AC), 0,0, p.H0C_SCS*RR.NC, p.H0C_ED*RR.NC, p.H0C_Hosp*RR.NC, p.H0NC_D[j], #H0NC 
+                    (1-H0NC.rem)*p.H0_AC,(1-H0NC.rem)*(1-p.H0_AC), 0,0, p.H0NC_SCS, p.H0NC_ED, p.H0NC_Hosp, p.H0NC_D[j], #H0NC 
                     p.H1_H0*p.H0_AC,p.H1_H0*(1-p.H0_AC),(1 - H1C.rem)*p.H1_AC,(1 - H1C.rem)*(1-p.H1_AC),p.H1C_SCS,p.H1C_ED,p.H1C_Hosp, p.H1C_D[j], #H1C
-                    p.H1_H0*p.H0_AC,p.H1_H0*(1-p.H0_AC),(1 - H1NC.rem)*p.H1_AC,(1 - H1NC.rem)*(1-p.H1_AC),p.H1C_SCS*RR.NC,p.H1C_ED*RR.NC,p.H1C_Hosp*RR.NC, p.H1NC_D[j], #H1NC
+                    p.H1_H0*p.H0_AC,p.H1_H0*(1-p.H0_AC),(1 - H1NC.rem)*p.H1_AC,(1 - H1NC.rem)*(1-p.H1_AC),p.H1NC_SCS,p.H1NC_ED,p.H1NC_Hosp, p.H1NC_D[j], #H1NC
                     0, 0, (1 - SEV.rem)*p.H1_AC,(1-SEV.rem)*(1-p.H1_AC), 0, 0, 0, min(p.SCS_D[j]+p.H0C_D[j],1), #SCS
                     0, 0, (1 - SEV.rem)*p.H1_AC,(1-SEV.rem)*(1-p.H1_AC), 0, 0, 0, min(p.ED_D[j]+p.H0C_D[j],1), #ED
                     0, 0, (1 - SEV.rem)*p.H1_AC,(1-SEV.rem)*(1-p.H1_AC), 0, 0, 0, min(p.Hosp_D[j]+p.H0C_D[j],1), # Hosp
@@ -419,6 +438,6 @@ rownames(table_markov) = v.Trt  # name the rows
 colnames(table_markov) = c("Costs", "QALYs","Incremental Costs", "QALYs Gained", "ICER") # name the columns
 table_markov                    # print the table 
 
-write.table(table_markov, file = "CEA_markov_v1.csv", sep = ",", quote = FALSE, row.names = F)
+ # write.table(table_markov, file = "CEA_markov_v1.csv", sep = ",", quote = FALSE, row.names = F)
 
 ```
