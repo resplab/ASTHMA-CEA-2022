@@ -142,7 +142,7 @@ RR.NC <- 1.201 #RATE ratio of exacerbation for not controlled asthma
 
   #H0
     p.H0C_H1 <- p.H0NC_H1 <- 0                     # weekly probability entering HCP from no HCP management (can't go to H1 without sev)
-    pAnn.H0C_D <- pAnn.H0NC_D   <- mortality$b_mortality   # probability of death from no HCP management (turn into vector)
+    pAnn.H0C_D <- pAnn.H0NC_D   <- mortality$b_mortality   # probability of death from no HCP management
     p.H0C_D <-p.H0NC_D  <-  1 - (1-pAnn.H0C_D)^(1/52)                 
     
   #H1
@@ -253,7 +253,7 @@ for (i in 2:(n.t + 1)) {
            c.PRIM, #H0C
            c.PRIM + c.AU, #H0NC
            c.ICS_SABA + c.HCP + c.timeHCP, #H1C
-           c.ICS_SABA + c.HCP + c.timeHCP + c.AU, #H1C
+           c.ICS_SABA + c.HCP + c.timeHCP + c.AU, #H1NC
            c.SCS + c.prodSCS, #SCS
            c.ED + c.prodED, #ED
            c.Hosp + c.prodHosp, #HOSP
@@ -416,28 +416,18 @@ v.C <- c(sim_markov_no_trt$tc_hat, sim_markov_PRIM$tc_hat, sim_markov_SYMB$tc_ha
 # store the mean QALYs of each strategy in a new variable E (vector effects)
 v.E <- c(sim_markov_no_trt$te_hat, sim_markov_PRIM$te_hat, sim_markov_SYMB$te_hat)
 
-delta.C2 <- v.C[2] - v.C[1]            # calculate incremental costs
-delta.E2 <- v.E[2] - v.E[1]            # calculate incremental QALYs
-ICER2 <- delta.C2 / delta.E2             # calculate the ICER
+# create the cost-effectiveness table
+table_markov <- as_tibble(cbind(v.C, v.E))
+table_markov$Strategy <- c("No treatment","Primatine","Symbicort")
+table_markov <- select(table_markov, Strategy, everything())
+colnames(table_markov) <- c("Strategy","Costs","Effectiveness")
 
-delta.C3 <- v.C[3] - v.C[1]            # calculate incremental costs
-delta.E3 <- v.E[3] - v.E[1]            # calculate incremental QALYs
-ICER3 <- delta.C3 / delta.E3             # calculate the ICER
+# calculate ICER
+table_markov <- table_markov %>%
+                    arrange(desc(Effectiveness)) %>% # no treatment is dominated by symbicort 
+                    mutate(delta_Costs=c(Costs[1]-Costs[3],0,0),  # calculate incremental costs
+                           delta_Effectiveness=c(Effectiveness[1]-Effectiveness[3],0,0), # calculate incremental QALYs
+                           delta_ICER=delta_Costs/delta_Effectiveness) # calculate the ICER
 
-  # results <- c(delta.C, delta.E, ICER)  # store the values in a new variable
-
-# Create full incremental cost-effectiveness analysis table
-table_markov <- data.frame(
-  round(v.C, 2),              # costs per arm
-  round(v.E, 5),              # health outcomes per arm
-  c("", round(delta.C2, 2), round(delta.C3,2)),   # incremental costs
-  c("", round(delta.E2, 5), round(delta.E3,5)),   # incremental QALYs
-  c("", round(ICER2, 2), round(ICER3,2))       # ICER
-)
-rownames(table_markov) = v.Trt  # name the rows
-colnames(table_markov) = c("Costs", "QALYs","Incremental Costs", "QALYs Gained", "ICER") # name the columns
-table_markov                    # print the table 
-
- # write.table(table_markov, file = "CEA_markov_v1.csv", sep = ",", quote = FALSE, row.names = F)
-
+print(table_markov)
 ```
