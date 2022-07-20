@@ -441,3 +441,23 @@ table_markov                    # print the table
  # write.table(table_markov, file = "CEA_markov_v1.csv", sep = ",", quote = FALSE, row.names = F)
 
 ```
+
+```{r, CEA plotting}
+library(dampack)
+library(ggplot2)
+library(kableExtra)
+library(dplyr)
+
+# icer_asthma <- calculate_icers(cost=v.C, effect = v.E, strategies = v.Trt)
+# 
+# icer_asthma %>%
+#   kable() %>%
+#   kable_styling()
+# 
+# plot(icer_asthma, label="all")
+# 
+# ggplot(data=table_markov, aes(x=`QALYs Gained`, y=`Incremental Costs`))+geom_point()
+
+
+```
+
