@@ -140,10 +140,12 @@ RR.NC <- 1.201 #RATE ratio of exacerbation for not controlled asthma
       p.Hosp_D_PRIM <- 1 - (1-pAnn.Hosp_D_PRIM)^(1/52)
 
   #SEVR -> H1
-  p.SEVR_H1 <- 0.5 #proxy
+  wk.SEVR_H1 <- rexp(1,1/4)      #mean of 4 weeks before exiting recovery state
+  r.SEVR_H1 <- 1/wk.SEVR_H1      #weekly rate of 1 event (event being leaving SEVR state)
+  p.SEVR_H1 <- 1-exp(-r.SEVR_H1) #Weekly probability of exiting SEVR
 
   #H0
-    p.H0C_H1 <- p.H0NC_H1 <- 0                     # weekly probability entering HCP from no HCP management (can't go to H1 without sev)
+    p.H0_H1 <- 0                     # weekly probability entering HCP from no HCP management (can't go to H1 without sev)
     pAnn.H0C_D <- pAnn.H0NC_D   <- mortality$b_mortality   # probability of death from no HCP management
     p.H0C_D <-p.H0NC_D  <-  1 - (1-pAnn.H0C_D)^(1/52)                 
     
@@ -170,7 +172,7 @@ RR.NC <- 1.201 #RATE ratio of exacerbation for not controlled asthma
 
 ## Indirect costs 
   c.timeHCP  <- 2 # HCP management time/week*Assuming 240 total minutes of 4 PCP visits per year, 20 min travel time, 40min wait, median wage $1037 in 2022
-  c.prodAU   <- 17 # cost of productivity loss due to asthma not controlled days per week*
+  c.prodAU   <- 132 # cost of productivity loss due to asthma not controlled days per week*
   
   #Productivity loss due to severe exacerbation ** Assuming do not go to work for 2,4,7 days
   c.prodSCS  <- 296 # productive lose due to severe exacerbation.
@@ -221,27 +223,27 @@ Markov <- function(v.M_1, n.t, v.n, d.c, d.e, trt=FALSE) {
   
 for (i in 2:(n.t + 1)) { 
     
-  H0C.rem <- min((0+0+p.H0C_SCS+p.H0C_ED+p.H0C_Hosp+p.H0C_D[i-1]),1)
-  H0NC.rem <- min((0+0+p.H0NC_SCS+p.H0NC_ED+p.H0NC_Hosp+p.H0NC_D[i-1]),1)
+  H0C.rem <- min((p.H0_H1*p.H1_AC+p.H0_H1*(1-p.H1_AC)+p.H0C_SCS+p.H0C_ED+p.H0C_Hosp+p.H0C_D[i-1]),1)
+  H0NC.rem <- min((p.H0_H1*p.H1_AC+p.H0_H1*(1-p.H1_AC)+p.H0NC_SCS+p.H0NC_ED+p.H0NC_Hosp+p.H0NC_D[i-1]),1)
   H1C.rem <- min(((p.H1_H0*p.H0_AC)+(p.H1_H0*(1-p.H0_AC))+p.H1C_SCS+p.H1C_ED+p.H1C_Hosp+p.H1C_D[i-1]),1)
   H1NC.rem <- min(((p.H1_H0*p.H0_AC)+(p.H1_H0*(1-p.H0_AC))+p.H1NC_SCS+p.H1NC_ED+p.H1NC_Hosp+p.H1C_D[i-1]),1)
   
   SCS.rem <- min((p.SCS_D_PRIM[i-1]+p.H0C_D[i-1]),1)
   ED.rem <- min((p.ED_D_PRIM[i-1]+p.H0C_D[i-1]),1)
   Hosp.rem <-min((p.Hosp_D_PRIM[i-1]+p.H0C_D[i-1]),1)
-  SEVR.rem <-  (p.SEVR_H1*p.H1_AC + p.SEVR_H1*(1-p.H1_AC))
+  SEVR.rem <- min((p.SEVR_H1*p.H1_AC + p.SEVR_H1*(1-p.H1_AC)+p.H0C_D[i-1]),1)
 
     
   # create the transition matrix for each model cycle
     m.P <- matrix(c(
-                    (1-H0C.rem)*p.H0_AC,(1-H0C.rem)*(1-p.H0_AC), 0,0, p.H0C_SCS, p.H0C_ED, p.H0C_Hosp, 0, p.H0C_D[i-1], #H0C
-                    (1-H0NC.rem)*p.H0_AC,(1-H0NC.rem)*(1-p.H0_AC), 0,0, p.H0NC_SCS, p.H0NC_ED, p.H0NC_Hosp, 0, p.H0NC_D[i-1], #H0NC 
+                    (1-H0C.rem)*p.H0_AC,(1-H0C.rem)*(1-p.H0_AC), p.H0_H1*p.H1_AC, p.H0_H1*(1-p.H1_AC), p.H0C_SCS, p.H0C_ED, p.H0C_Hosp, 0, p.H0C_D[i-1], #H0C
+                    (1-H0NC.rem)*p.H0_AC,(1-H0NC.rem)*(1-p.H0_AC), p.H0_H1*p.H1_AC, p.H0_H1*(1-p.H1_AC), p.H0NC_SCS, p.H0NC_ED, p.H0NC_Hosp, 0, p.H0NC_D[i-1], #H0NC 
                     p.H1_H0*p.H0_AC,p.H1_H0*(1-p.H0_AC),(1 - H1C.rem)*p.H1_AC,(1 - H1C.rem)*(1-p.H1_AC),p.H1C_SCS,p.H1C_ED,p.H1C_Hosp, 0, p.H1C_D[i-1], #H1C
                     p.H1_H0*p.H0_AC,p.H1_H0*(1-p.H0_AC),(1 - H1NC.rem)*p.H1_AC,(1 - H1NC.rem)*(1-p.H1_AC),p.H1NC_SCS,p.H1NC_ED,p.H1NC_Hosp, 0, p.H1NC_D[i-1], #H1NC
                     0, 0, 0, 0, 0, 0, 0,(1-SCS.rem), min(p.SCS_D_PRIM[i-1]+p.H0C_D[i-1],1), #SCS
                     0, 0, 0, 0, 0, 0, 0,(1-ED.rem), min(p.ED_D_PRIM[i-1]+p.H0C_D[i-1],1), #ED
                     0, 0, 0, 0, 0, 0, 0,(1-Hosp.rem), min(p.Hosp_D_PRIM[i-1]+p.H0C_D[i-1],1), # Hosp
-                    0, 0, p.SEVR_H1*p.H1_AC, p.SEVR_H1*(1-p.H1_AC), 0, 0, 0, 1-SEVR.rem, 0, #SEVR
+                    0, 0, p.SEVR_H1*p.H1_AC, p.SEVR_H1*(1-p.H1_AC), 0, 0, 0, 1-SEVR.rem, p.H0C_D[i-1], #SEVR
                     0, 0, 0, 0, 0, 0, 0, 0, 1), #D
                   nrow = n.s, ncol = n.s, byrow = T,
                   dimnames = list(v.n, v.n))
@@ -285,27 +287,27 @@ for (i in 2:(n.t + 1)) {
   # run the simulation for symbicort
  for (i in 2:(n.t + 1)) { 
     
-H0C.rem <- min((0+0+p.SYMC_SCS+p.SYMC_ED+p.SYMC_Hosp+p.H0C_D[i-1]),1)
-H0NC.rem <- min((0+0+p.SYMNC_SCS+p.SYMNC_ED+p.SYMNC_Hosp+p.H0NC_D[i-1]),1)
+H0C.rem <- min((p.H0_H1*p.H1_AC+p.H0_H1*(1-p.H1_AC)+p.SYMC_SCS+p.SYMC_ED+p.SYMC_Hosp+p.H0C_D[i-1]),1)
+H0NC.rem <- min((p.H0_H1*p.H1_AC+p.H0_H1*(1-p.H1_AC)+p.SYMNC_SCS+p.SYMNC_ED+p.SYMNC_Hosp+p.H0NC_D[i-1]),1)
 H1C.rem <- min(((p.H1_H0*p.H0_AC)+(p.H1_H0*(1-p.H0_AC))+p.H1C_SCS+p.H1C_ED+p.H1C_Hosp+p.H1C_D[i-1]),1)
 H1NC.rem <- min(((p.H1_H0*p.H0_AC)+(p.H1_H0*(1-p.H0_AC))+p.H1NC_SCS+p.H1NC_ED+p.H1NC_Hosp+p.H1C_D[i-1]),1)
 
 SCS.rem <- min((p.SCS_D[i-1]+p.H0C_D[i-1]),1)
 ED.rem <- min((p.ED_D[i-1]+p.H0C_D[i-1]),1)
 Hosp.rem <- min((p.Hosp_D[i-1]+p.H0C_D[i-1]),1)
-SEVR.rem <-  (p.SEVR_H1*p.H1_AC + p.SEVR_H1*(1-p.H1_AC))
+SEVR.rem <- min((p.SEVR_H1*p.H1_AC + p.SEVR_H1*(1-p.H1_AC)+p.H0C_D[i-1]),1)
 
 
   # create the transition matrix for each model cycle
     m.P <- matrix(c(
-                    (1-H0C.rem)*p.SYM_AC,(1-H0C.rem)*(1-p.SYM_AC), 0,0, p.SYMC_SCS, p.SYMC_ED, p.SYMC_Hosp, 0, p.H0C_D[i-1], #H0C
-                    (1-H0NC.rem)*p.SYM_AC,(1-H0NC.rem)*(1-p.SYM_AC), 0,0, p.SYMNC_SCS, p.SYMNC_ED, p.SYMNC_Hosp, 0, p.H0NC_D[i-1], #H0NC 
+                    (1-H0C.rem)*p.SYM_AC,(1-H0C.rem)*(1-p.SYM_AC), p.H0_H1*p.H1_AC, p.H0_H1*(1-p.H1_AC), p.SYMC_SCS, p.SYMC_ED, p.SYMC_Hosp, 0, p.H0C_D[i-1], #H0C
+                    (1-H0NC.rem)*p.SYM_AC,(1-H0NC.rem)*(1-p.SYM_AC), p.H0_H1*p.H1_AC, p.H0_H1*(1-p.H1_AC), p.SYMNC_SCS, p.SYMNC_ED, p.SYMNC_Hosp, 0, p.H0NC_D[i-1], #H0NC 
                     p.H1_H0*p.SYM_AC,p.H1_H0*(1-p.SYM_AC),(1 - H1C.rem)*p.H1_AC,(1 - H1C.rem)*(1-p.H1_AC),p.H1C_SCS,p.H1C_ED,p.H1C_Hosp, 0, p.H1C_D[i-1], #H1C
                     p.H1_H0*p.SYM_AC,p.H1_H0*(1-p.SYM_AC),(1 - H1NC.rem)*p.H1_AC,(1 - H1NC.rem)*(1-p.H1_AC),p.H1NC_SCS,p.H1NC_ED,p.H1NC_Hosp, 0, p.H1NC_D[i-1], #H1NC
                     0, 0, 0, 0, 0, 0, 0,(1-SCS.rem), min(p.SCS_D[i-1]+p.H0C_D[i-1],1), #SCS
                     0, 0, 0, 0, 0, 0, 0,(1-ED.rem), min(p.ED_D[i-1]+p.H0C_D[i-1],1), #ED
                     0, 0, 0, 0, 0, 0, 0,(1-Hosp.rem), min(p.Hosp_D[i-1]+p.H0C_D[i-1],1), # Hosp
-                    0, 0, p.SEVR_H1*p.H1_AC, p.SEVR_H1*(1-p.H1_AC), 0, 0, 0, 1-SEVR.rem, 0, #SEVR
+                    0, 0, p.SEVR_H1*p.H1_AC, p.SEVR_H1*(1-p.H1_AC), 0, 0, 0, 1-SEVR.rem, p.H0C_D[i-1], #SEVR
                     0, 0, 0, 0, 0, 0, 0, 0, 1), #D
                   nrow = n.s, ncol = n.s, byrow = T,
                   dimnames = list(v.n, v.n))
@@ -349,27 +351,27 @@ SEVR.rem <-  (p.SEVR_H1*p.H1_AC + p.SEVR_H1*(1-p.H1_AC))
 
 for (i in 2:(n.t + 1)) { 
   
-H0C.rem <- min((0+0+p.H0C_SCS+p.H0C_ED+p.H0C_Hosp+0+p.H0C_D[i-1]),1)
-H0NC.rem <- min((0+0+p.H0NC_SCS+p.H0NC_ED+p.H0NC_Hosp+0+p.H0NC_D[i-1]),1)
+H0C.rem <- min((p.H0_H1*p.H1_AC+p.H0_H1*(1-p.H1_AC)+p.H0C_SCS+p.H0C_ED+p.H0C_Hosp+0+p.H0C_D[i-1]),1)
+H0NC.rem <- min((p.H0_H1*p.H1_AC+p.H0_H1*(1-p.H1_AC)+p.H0NC_SCS+p.H0NC_ED+p.H0NC_Hosp+0+p.H0NC_D[i-1]),1)
 H1C.rem <- min(((p.H1_H0*p.H0_AC)+(p.H1_H0*(1-p.H0_AC))+p.H1C_SCS+p.H1C_ED+p.H1C_Hosp+0+p.H1C_D[i-1]),1)
 H1NC.rem <- min(((p.H1_H0*p.H0_AC)+(p.H1_H0*(1-p.H0_AC))+p.H1NC_SCS+p.H1NC_ED+p.H1NC_Hosp+0+p.H1C_D[i-1]),1)
 
 SCS.rem <- min((p.SCS_D[i-1]+p.H0C_D[i-1]),1)
 ED.rem <- min((p.ED_D[i-1]+p.H0C_D[i-1]),1)
 Hosp.rem <- min((p.Hosp_D[i-1]+p.H0C_D[i-1]),1)
-SEVR.rem <-  (p.SEVR_H1*p.H1_AC + p.SEVR_H1*(1-p.H1_AC))
+SEVR.rem <- min((p.SEVR_H1*p.H1_AC + p.SEVR_H1*(1-p.H1_AC)+p.H0C_D[i-1]),1)
 
 
   # create the transition matrix for each model cycle
     m.P <- matrix(c(
-                    (1-H0C.rem)*p.H0_AC,(1-H0C.rem)*(1-p.H0_AC), 0,0, p.H0C_SCS, p.H0C_ED, p.H0C_Hosp, 0, p.H0C_D[i-1], #H0C
-                    (1-H0NC.rem)*p.H0_AC,(1-H0NC.rem)*(1-p.H0_AC), 0,0, p.H0NC_SCS, p.H0NC_ED, p.H0NC_Hosp,0, p.H0NC_D[i-1], #H0NC 
+                    (1-H0C.rem)*p.H0_AC,(1-H0C.rem)*(1-p.H0_AC), p.H0_H1*p.H1_AC, p.H0_H1*(1-p.H1_AC), p.H0C_SCS, p.H0C_ED, p.H0C_Hosp, 0, p.H0C_D[i-1], #H0C
+                    (1-H0NC.rem)*p.H0_AC,(1-H0NC.rem)*(1-p.H0_AC), p.H0_H1*p.H1_AC, p.H0_H1*(1-p.H1_AC), p.H0NC_SCS, p.H0NC_ED, p.H0NC_Hosp,0, p.H0NC_D[i-1], #H0NC 
                     p.H1_H0*p.H0_AC,p.H1_H0*(1-p.H0_AC),(1 - H1C.rem)*p.H1_AC,(1 - H1C.rem)*(1-p.H1_AC),p.H1C_SCS,p.H1C_ED,p.H1C_Hosp,0, p.H1C_D[i-1], #H1C
                     p.H1_H0*p.H0_AC,p.H1_H0*(1-p.H0_AC),(1 - H1NC.rem)*p.H1_AC,(1 - H1NC.rem)*(1-p.H1_AC),p.H1NC_SCS,p.H1NC_ED,p.H1NC_Hosp,0, p.H1NC_D[i-1], #H1NC
                     0, 0, 0, 0, 0, 0, 0,(1-SCS.rem), min(p.SCS_D[i-1]+p.H0C_D[i-1],1), #SCS
                     0, 0, 0, 0, 0, 0, 0,(1-ED.rem), min(p.ED_D[i-1]+p.H0C_D[i-1],1), #ED
                     0, 0, 0, 0, 0, 0, 0,(1-Hosp.rem), min(p.Hosp_D[i-1]+p.H0C_D[i-1],1), # Hosp
-                    0, 0, p.SEVR_H1*p.H1_AC, p.SEVR_H1*(1-p.H1_AC), 0, 0, 0, 1-SEVR.rem, 0, #SEVR
+                    0, 0, p.SEVR_H1*p.H1_AC, p.SEVR_H1*(1-p.H1_AC), 0, 0, 0, 1-SEVR.rem, p.H0C_D[i-1], #SEVR
                     0, 0, 0, 0, 0, 0, 0, 0, 1), #D
                   nrow = n.s, ncol = n.s, byrow = T,
                   dimnames = list(v.n, v.n))
@@ -418,11 +420,14 @@ te_hat <- t(te) %*% v.dwe  # total (discounted) QALY
 
 #outcomes
   m.TR_temp <- as_tibble(m.TR)
-  cont <- sum(m.TR_temp$H0C + m.TR_temp$H1C)
-  UC <- sum(m.TR_temp$H0NC + m.TR_temp$H1NC + m.TR_temp$SEVR)
+  
+  cont <- sum(m.TR_temp$H0C + m.TR_temp$H1C)*7
+  UC <- sum(m.TR_temp$H0NC + m.TR_temp$H1NC + m.TR_temp$SEVR)*7
+  
   SCSoutcome <- sum(m.TR_temp$SCS)
   EDoutcome <- sum(m.TR_temp$ED)
   Hospoutcome <- sum(m.TR_temp$HOSP)
+  
   SEVoutcome <- sum(m.TR_temp$SCS + m.TR_temp$ED + m.TR_temp$HOSP)
 
 results <- list(m.TR = m.TR, tc_hat = tc_hat, te_hat = te_hat, tc=tc, te=te, v.dwc=v.dwc, v.dwe=v.dwe, vc=v.c,
