@@ -46,8 +46,8 @@ Assumptions
 library(here)
 library(tidyverse)
 library(dplyr)
+library(readxl)
 mortality <- read_csv("mortality.csv")
-
 ### Model input
   n.t   <- 52*77 #(52*(100-23))            # time horizon, lifetime from 23yrs, 1 week cycle
   
@@ -63,10 +63,8 @@ mortality <- read_csv("mortality.csv")
   v.Trt <- c("No OTC", 
              "Primatene", 
              "Symbicort")       # store the strategy names
-
 ```
-
-```{r, f_gen_psa_base model input parameters}
+```{r, f_gen_psa_base input}
 f_gen_psa_base <- function(n_sim = 1000){
   
   require(truncnorm)  
@@ -92,7 +90,7 @@ f_gen_psa_base <- function(n_sim = 1000){
   #Exacerbation proportion (SCS, ED, HOSP)
   prop.H0_SEV <- prop.PRIM_SEV <- c(0.776,0.130,0.094)
   prop.SYM_SEV <- c(0.819,0.102,0.079)
-  prop.H1_SEV <- c(0.784,0.152,0.064)
+  prop.H1_SEV <- c(0.824,0.098,0.078)
   
   #Cumulative rate from SYGMA trials
   r.H0_SEVtot <- 0.20 #syg1
@@ -197,7 +195,7 @@ df_psa <- data.frame(
       c.ICS_SABA = (c.ICS + c.SABA),
       
       ## Indirect costs 
-      c.timeHCP  = 2, # HCP management time/week*Assuming 240 total minutes of 4 PCP visits per year, 20 min travel time, 40min wait, median wage $1037 in 2022
+      c.timeHCP  = 3.03, # HCP management time/week*Assuming 240 total minutes of 4 PCP visits per year, 20 min travel time, 40min wait, median wage $1037 in 2022
       c.prodAU   = 132, # cost of productivity loss due to asthma not controlled days per week*
       
       #Productivity loss due to severe exacerbation ** Assuming do not go to work for 2,4,7 days
@@ -226,7 +224,6 @@ df_psa <- data.frame(
 
 }
 ```
-
 ```{r, Markov Model, include=FALSE}
 ############################### Markov Model  ###########################
 # The Markov function 
@@ -808,6 +805,22 @@ f_gen_psa_NMB <- function(n_sim = 1000){
   
 }
 
+NMB_plot <- function(data, 
+                     x, y, 
+                     title=NULL,
+                     xlab=NULL, ylab=NULL){
+  p <- ggplot(data = data,
+         aes(x,y))+
+    geom_line(lty=2)+
+    labs(x=xlab, y=ylab, title=title)+
+    theme_bw() + theme(panel.border = element_blank(),
+                       # panel.grid.major = element_blank(),
+                       # panel.grid.minor = element_blank(), 
+                       axis.line = element_line(colour = "black") 
+                        )
+    
+return(p)
+}
 
 #### NMB for symbicort cost ###
   sim_PSA_SYMB    <- f_wrapper(fxn=f_gen_psa_NMB,
@@ -825,11 +838,7 @@ f_gen_psa_NMB <- function(n_sim = 1000){
   sim_PSA_SYMB$NMB = (100000*sim_PSA_SYMB$QALYs) - sim_PSA_SYMB$Costs
   sim_PSA_SYMB$c.sym <- seq(from=0, to=500, by=50)
 
-  ### NMB plot
-  ggplot(data = sim_PSA_SYMB,
-         aes(c.sym,NMB))+
-    geom_line(lty=2)+
-    labs(x="Symbicort Cost per Inhaler", y="Net Monetary Benefit")
+
 
 
 ### INMB ###
@@ -845,7 +854,7 @@ f_gen_psa_NMB <- function(n_sim = 1000){
   sim_PSA_PRIM$WTP <- seq(from=0, to=150000, by=10000)
   sim_PSA_PRIM$NMB <- (sim_PSA_PRIM$WTP*sim_PSA_PRIM$QALYs) - sim_PSA_PRIM$Costs
   
-  #### NMB for symbicort cost ###
+#### INMB for symbicort compared to primatene and no trt
   sim_PSA_SYMB    <- f_wrapper(fxn=f_gen_psa_base,
                                n_sim=1,
                                trt="symbicort")  %>% slice(rep(1,16))
@@ -853,6 +862,35 @@ f_gen_psa_NMB <- function(n_sim = 1000){
   sim_PSA_SYMB$NMB <- (sim_PSA_SYMB$WTP*sim_PSA_SYMB$QALYs) - sim_PSA_SYMB$Costs
   sim_PSA_SYMB$INMB_notrt <- sim_PSA_SYMB$NMB - sim_PSA_no_trt$NMB
   sim_PSA_SYMB$INMB_PRIM <- sim_PSA_SYMB$NMB - sim_PSA_PRIM$NMB
+
+#plots
+sym_PRIM<-NMB_plot(data=sim_PSA_SYMB,
+         x=sim_PSA_SYMB$WTP,
+         y=sim_PSA_SYMB$INMB_PRIM,
+         xlab="Willingness to pay (WTP)",
+         ylab="Incremental net monetary benefit (INMB)",
+         title="Budesonide-fomoterol vs. Inhaled Epinephrine")
+  
+sym_notrt<-NMB_plot(data=sim_PSA_SYMB,
+         x=sim_PSA_SYMB$WTP,
+         y=sim_PSA_SYMB$INMB_notrt,
+         xlab="Willingness to pay (WTP)",
+         ylab="Incremental net monetary benefit (INMB)",
+         title="Budesonide-fomoterol vs. No OTC Option")
+
+
+theme_set(theme_pubr())
+y <- ggarrange(sym_PRIM, sym_notrt,
+               ncol=2,
+               nrow=1,
+               labels =c('A','B')) 
+
+ggsave("INMB.png", plot=y, 
+       path="C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Manuscript\\Figures",
+       width= 11,
+       height= 6,
+       dpi = 1000)
+
 
 ```
 
@@ -891,13 +929,29 @@ library(dplyr)
   
 ```
 ```{r, f_gen_psa}
+psa_param <- read_excel("C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/AsthmaCEA_Markov_2022_v5.xlsx", 
+    sheet = "R-extract") %>% select(-"PSA distribution")
+  t <- as_tibble(t(psa_param))
+  names(t) <- t[1,]
+  t<- t[-1,]
+  t <- mutate_all(t, function(x) as.numeric(as.character(x)))
+  rownames(t)<- c("S1", "S2")
+
+psa_param <- apply(t,2,as.list)
+rm(t)
+
 f_gen_psa <- function(n_sim = 1000){
   
-  require(truncnorm)  
+  require(truncnorm)
+  require(gtools)
   
 ### Asthma Control Probability ### (proportion: mean % of weeks with well controlled asthma)l
-  p.H0_AC <- p.PRIM_AC <-  0.31
-  p.SYM_AC <- 0.34
+  p.H0_AC <- p.PRIM_AC <- rbeta(n = n_sim,
+                                shape1 = psa_param[["p.H0_AC"]][["S1"]],
+                                shape2 = psa_param[["p.H0_AC"]][["S2"]])
+  p.SYM_AC <- rbeta(n = n_sim,
+                    shape1 = psa_param[["p.SYM_AC"]][["S1"]],
+                    shape2 = psa_param[["p.SYM_AC"]][["S2"]])
   p.H1_AC <- 0.44
   
 ### OTHER ###  
@@ -910,19 +964,29 @@ f_gen_psa <- function(n_sim = 1000){
   
 ### SEV (Severe Exacerbation) ###
   p.SCS_H0 <- p.ED_H0 <-p.Hosp_H0 <- 0 #Assumption that following severe exacerbation patient enters H1
-  RR.NC <- 1.201 #RATE ratio of exacerbation for not controlled asthma
+  RR.NC <- rlnorm(n = n_sim,
+                  meanlog = psa_param[["RR.NC"]][["S1"]],
+                  sdlog = psa_param[["RR.NC"]][["S2"]]) #RATE ratio of exacerbation for not controlled asthma
   
   #Exacerbation proportion (SCS, ED, HOSP)
-  prop.H0_SEV <- prop.PRIM_SEV <- c(0.776,0.130,0.094)
-  prop.SYM_SEV <- c(0.819,0.102,0.079)
+  prop.H0_SEV <- prop.PRIM_SEV <- rdirichlet(n = n_sim,
+                                             c(psa_param[["prop.H0_SEV_SCS"]][["S1"]],psa_param[["prop.H0_SEV_ED"]][["S1"]],psa_param[["prop.H0_SEV_Hosp"]][["S1"]]))
+  prop.SYM_SEV <- rdirichlet(n = n_sim,
+                             c(psa_param[["prop.SYM_SEV_SCS2"]][["S1"]],psa_param[["prop.SYM_SEV_ED2"]][["S1"]],psa_param[["prop.SYM_SEV_Hosp2"]][["S1"]]))
   prop.H1_SEV <- c(0.784,0.152,0.064)
   
   #Cumulative rate from SYGMA trials
-  r.H0_SEVtot <- 0.20 #syg1
+  r.H0_SEVtot <- rgamma(n = n_sim,
+                         shape = psa_param[["r.H0"]][["S1"]],
+                         scale = psa_param[["r.H0"]][["S2"]])
+                        
   r.SYM_SEVtot <- rgamma(n_sim,
-                         shape = 116.2084,
-                         scale = 0.000946575)
-  r.H1_SEVtot <- 0.09 #syg1
+                         shape = psa_param[["r.SYM_2"]][["S1"]],
+                         scale = psa_param[["r.SYM_2"]][["S2"]])
+  
+  r.H1_SEVtot <-  rgamma(n_sim,
+                         shape = psa_param[["r.H1"]][["S1"]],
+                         scale = psa_param[["r.H1"]][["S2"]])
   
     #Rate of exacerbation by control group
     #controlled (C)
@@ -958,7 +1022,14 @@ f_gen_psa <- function(n_sim = 1000){
   pAnn.H0C_D <- pAnn.H0NC_D <- mortality$b_mortality   # probability of death from no HCP management
   p.H0C_D <- p.H0NC_D  <- p.H1C_D <- p.H1NC_D <-  1 - (1-pAnn.H0C_D)^(1/52)                 
 
+#Cost
+  inh.PRIM <- rgamma(n_sim,
+                         shape = psa_param[["inh.PRIM"]][["S1"]],
+                         scale = psa_param[["inh.PRIM"]][["S2"]])
 
+  inh.SYM <- rgamma(n_sim,
+                         shape = psa_param[["inh.SYM"]][["S1"]],
+                         scale = psa_param[["inh.SYM"]][["S2"]])
 ################################################################################################################################
 ### Parameter dataframe ###
 df_psa <- data.frame(
@@ -1015,10 +1086,10 @@ df_psa <- data.frame(
       c.Hosp    = 12398,               # cost of being in HOSP
       
       ## Drug acquisition cost (per DAY) * 7 
-      c.PRIM     = 29.78*(0.52/160) * 7,               # cost of primatene
-      c.SYM      = 311.49*(0.52/120) * 7,            # cost of symbicort
-      c.ICS      =  c.ICS <- 326.28*(2/120)* 7,               # cost of ICS
-      c.SABA     = c.SABA <- 54.42*(0.49/200)* 7,             # cost of SABA
+      c.PRIM     = 29.78*(inh.PRIM/160) * 7,               # cost of primatene
+      c.SYM      = 311.49*(inh.SYM/120) * 7,            # cost of symbicort
+      c.ICS      =  c.ICS <- 326.28*(inh.ICS/120)* 7,               # cost of ICS
+      c.SABA     = c.SABA <- 54.42*(inh.SABA/200)* 7,             # cost of SABA
       c.ICS_SABA = (c.ICS + c.SABA),
       
       ## Indirect costs 
