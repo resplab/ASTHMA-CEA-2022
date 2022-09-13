@@ -41,28 +41,32 @@ Assumptions
 
 ##################################### Model input #########################################
 
-### Model Setup ###
+### Model Setup & Parameter Functions ###
 ```{r, Model input setup, include=false}
 library(here)
 library(tidyverse)
 library(dplyr)
 library(readxl)
-mortality <- read_csv("mortality.csv")
-### Model input
-  n.t   <- 52*77 #(52*(100-23))            # time horizon, lifetime from 23yrs, 1 week cycle
-  
-  v.n   <- c("H0C","H0NC", #H0 no hcp mgt
-             "H1C", "H1NC", #H1 HCP MGT
-             "SCS","ED","HOSP", "SEVR", #SEV exacerbation
-             "D") #death
-  
-  n.s   <- length(v.n)                 # the number of health states
-  v.M_1 <- c(1,0,0,0,0,0,0,0,0)          # Initial health state distribution - Everyone starts at controlled no HCP management
-  
-  d.c   <- d.e <- (0.03/52)           # equal discounting of costs and QALYs by 3% per year
-  v.Trt <- c("No OTC", 
-             "Primatene", 
-             "Symbicort")       # store the strategy names
+library(dampack)
+library(ggplot2)
+library(kableExtra)
+
+  # mortality <- read_csv("mortality.csv")
+  # ### Model input
+  #   n.t   <- 52*77 #(52*(100-23))            # time horizon, lifetime from 23yrs, 1 week cycle
+  #   
+  #   v.n   <- c("H0C","H0NC", #H0 no hcp mgt
+  #              "H1C", "H1NC", #H1 HCP MGT
+  #              "SCS","ED","HOSP", "SEVR", #SEV exacerbation
+  #              "D") #death
+  #   
+  #   n.s   <- length(v.n)                 # the number of health states
+  #   v.M_1 <- c(1,0,0,0,0,0,0,0,0)          # Initial health state distribution - Everyone starts at controlled no HCP management
+  #   
+  #   d.c   <- d.e <- (0.03/52)           # equal discounting of costs and QALYs by 3% per year
+  #   v.Trt <- c("No OTC", 
+  #              "Primatene", 
+  #              "Symbicort")       # store the strategy names
 ```
 ```{r, f_gen_psa_base input}
 f_gen_psa_base <- function(n_sim = 1000){
@@ -70,9 +74,9 @@ f_gen_psa_base <- function(n_sim = 1000){
   require(truncnorm)  
   
 ### Asthma Control Probability ### (proportion: mean % of weeks with well controlled asthma)l
-  p.H0_AC <- p.PRIM_AC <-  0.31
-  p.SYM_AC <- 0.34
-  p.H1_AC <- 0.44
+  p.H0_AC <- p.PRIM_AC <-  0.311
+  p.SYM_AC <- 0.344
+  p.H1_AC <- 0.444
   
 ### OTHER ###  
   #H1 Adherence
@@ -204,7 +208,7 @@ df_psa <- data.frame(
       c.prodHosp = 1037,
       
       ## Utility
-      du.AU   = du.AU <- -0.06/52,                # disutility of asthma uncontrolled week
+      du.AU   = du.AU <- -0.07/52,                # disutility of asthma uncontrolled week
       du.SCS  = du.SCS <- -0.10/52,               # disutility of systemic corticosteroid use
       du.ED   = du.ED <- -0.15/52,                 # disutility of emergency department
       du.Hosp = du.Hosp <- -0.20/52,                 # disutility of hospitalization
@@ -224,6 +228,317 @@ df_psa <- data.frame(
 
 }
 ```
+```{r, f_gen_psa PSA input}
+psa_param <- read_excel("C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/AsthmaCEA_Markov_2022_v6.xlsx", 
+    sheet = "R-extract") %>% select(-"PSA distribution")
+  t <- as_tibble(t(psa_param))
+  names(t) <- t[1,]
+  t<- t[-1,]
+  t <- mutate_all(t, function(x) as.numeric(as.character(x)))
+  rownames(t)<- c("S1", "S2")
+
+psa_param <- apply(t,2,as.list)
+rm(t)
+
+f_gen_psa <- function(n_sim = 1000){
+  
+  require(truncnorm)
+  require(gtools)
+  
+### Asthma Control Probability ### (proportion: mean % of weeks with well controlled asthma)l
+  p.H0_AC <- p.PRIM_AC <- rbeta(n = n_sim,
+                                shape1 = psa_param[["p.H0_AC"]][["S1"]],
+                                shape2 = psa_param[["p.H0_AC"]][["S2"]])
+  p.SYM_AC <- rbeta(n = n_sim,
+                    shape1 = psa_param[["p.SYM_AC"]][["S1"]],
+                    shape2 = psa_param[["p.SYM_AC"]][["S2"]])
+  
+  p.H1_AC <- rbeta(n = n_sim,
+                    shape1 = psa_param[["p.H1_AC"]][["S1"]],
+                    shape2 = psa_param[["p.H1_AC"]][["S2"]])
+  
+### OTHER ###  
+  #H1 Adherence
+  pAnn.H1_H0  <- 1 - (rbeta(n = n_sim,
+                    shape1 = psa_param[["p.H1_H0"]][["S1"]],
+                    shape2 = psa_param[["p.H1_H0"]][["S2"]]))  # probability of non-adherence to HCP management
+
+  p.H1_H0  <- 1 - (1-pAnn.H1_H0)^(1/52)
+  
+  
+  #SEVR -> H1 (Recovery)
+  wk.SEVR_H1 <- rexp(n_sim,1/4)      #mean of 4 weeks before exiting recovery state
+  r.SEVR_H1 <- 1/wk.SEVR_H1      #weekly rate of 1 event (event being leaving SEVR state)
+  p.SEVR_H1 <- 1-exp(-r.SEVR_H1)
+  
+  
+### SEV (Severe Exacerbation) ###
+  p.SCS_H0 <- p.ED_H0 <-p.Hosp_H0 <- 0 #Assumption that following severe exacerbation patient enters H1
+  RR.NC <- rlnorm(n = n_sim,
+                  meanlog = psa_param[["RR.NC"]][["S1"]],
+                  sdlog = psa_param[["RR.NC"]][["S2"]]) #RATE ratio of exacerbation for not controlled asthma
+  
+  #Exacerbation proportion (SCS, ED, HOSP)
+  prop.H0_SEV <- prop.PRIM_SEV <- rdirichlet(n = n_sim,
+                                             c(psa_param[["prop.H0_SEV_SCS"]][["S1"]],psa_param[["prop.H0_SEV_ED"]][["S1"]],psa_param[["prop.H0_SEV_Hosp"]][["S1"]]))
+  prop.SYM_SEV <- rdirichlet(n = n_sim,
+                             c(psa_param[["prop.SYM_SEV_SCS2"]][["S1"]],psa_param[["prop.SYM_SEV_ED2"]][["S1"]],psa_param[["prop.SYM_SEV_Hosp2"]][["S1"]]))
+  
+  prop.H1_SEV <-  rdirichlet(n = n_sim,
+                             c(psa_param[["prop.H1_SEV_SCS"]][["S1"]],psa_param[["prop.H1_SEV_ED"]][["S1"]],psa_param[["prop.H1_SEV_Hosp"]][["S1"]]))
+  
+  #Cumulative rate from SYGMA trials
+  r.H0_SEVtot <- rgamma(n = n_sim,
+                         shape = psa_param[["r.H0"]][["S1"]],
+                         scale = psa_param[["r.H0"]][["S2"]])
+                        
+  r.SYM_SEVtot <- rgamma(n_sim,
+                         shape = psa_param[["r.SYM_2"]][["S1"]],
+                         scale = psa_param[["r.SYM_2"]][["S2"]])
+  
+  r.H1_SEVtot <-  rgamma(n_sim,
+                         shape = psa_param[["r.H1"]][["S1"]],
+                         scale = psa_param[["r.H1"]][["S2"]])
+  
+    #Rate of exacerbation by control group
+    #controlled (C)
+    r.H0C_SEV <- r.H0_SEVtot/(p.H0_AC + RR.NC - RR.NC*p.H0_AC) #yaghoubi et al.2020
+    r.SYMC_SEV <- r.SYM_SEVtot/(p.SYM_AC + RR.NC - RR.NC*p.SYM_AC) #yaghoubi et al.2020
+    r.H1C_SEV <- r.H1_SEVtot/(p.H1_AC + RR.NC - RR.NC*p.H1_AC) #yaghoubi et al.2020
+    
+    #Not controlled (NC)
+    r.H0NC_SEV <- r.H0C_SEV * RR.NC
+    r.SYMNC_SEV <- r.SYMC_SEV * RR.NC
+    r.H1NC_SEV <- r.H1C_SEV * RR.NC
+
+ #Rate -> transition probability
+      p.H0C_SCS <- (1-exp(-r.H0C_SEV/52)) * prop.H0_SEV[,1] # weekly probability of severe exacerbation with no OTC or primatene OTC prn
+      p.H0C_ED <- (1-exp(-r.H0C_SEV/52)) * prop.H0_SEV[,2]
+      p.H0C_Hosp <- (1-exp(-r.H0C_SEV/52)) * prop.H0_SEV[,3]
+      
+      p.SYMC_SCS <- (1-exp(-r.SYMC_SEV/52)) * prop.SYM_SEV[,1]	# weekly rate of severe exacerbation with symbicort PRN
+      p.SYMC_ED <- (1-exp(-r.SYMC_SEV/52)) * prop.SYM_SEV[,2]
+      p.SYMC_Hosp <- (1-exp(-r.SYMC_SEV/52)) * prop.SYM_SEV[,3]
+      
+      p.H1C_SCS <- (1-exp(-r.H1C_SEV/52)) * prop.H1_SEV[,1]	# weekly rate of severe exacerbation with HCP management (low dose ICS + SABA)
+      p.H1C_ED <- (1-exp(-r.H1C_SEV/52)) * prop.H1_SEV[,2]
+      p.H1C_Hosp <- (1-exp(-r.H1C_SEV/52)) * prop.H1_SEV[,3]
+      
+      #Not controlled (NC)
+      p.H0NC_SCS <- (1-exp(-r.H0NC_SEV/52)) * prop.H0_SEV[,1] # weekly probability of severe exacerbation with no OTC or primatene OTC prn
+      p.H0NC_ED <- (1-exp(-r.H0NC_SEV/52)) * prop.H0_SEV[,2]
+      p.H0NC_Hosp <- (1-exp(-r.H0NC_SEV/52)) * prop.H0_SEV[,3]
+      
+      p.SYMNC_SCS <- (1-exp(-r.SYMNC_SEV/52)) * prop.SYM_SEV[,1]	# weekly rate of severe exacerbation with symbicort PRN
+      p.SYMNC_ED <- (1-exp(-r.SYMNC_SEV/52)) * prop.SYM_SEV[,2]
+      p.SYMNC_Hosp <- (1-exp(-r.SYMNC_SEV/52)) * prop.SYM_SEV[,3]
+      
+      p.H1NC_SCS <- (1-exp(-r.H1NC_SEV/52)) * prop.H1_SEV[,1]	# weekly rate of severe exacerbation with HCP management (low dose ICS + SABA)
+      p.H1NC_ED <- (1-exp(-r.H1NC_SEV/52)) * prop.H1_SEV[,2]
+      p.H1NC_Hosp <- (1-exp(-r.H1NC_SEV/52)) * prop.H1_SEV[,3]
+    
+    
+### Mortality ### 
+OR.AF <- rlnorm(n = n_sim,
+                meanlog = psa_param[["OR.AF"]][["S1"]],
+                sdlog = psa_param[["OR.AF"]][["S2"]])
+
+
+#Asthma Fatality (baseline)
+  pAnn.SCS_D <- mortality$p.SCS_AF
+  pAnn.ED_D <- mortality$p.ED_AF
+  pAnn.Hosp_D <- mortality$p.HOSP_AF
+  
+  p.SCS_D <- 1 - (1-pAnn.SCS_D)^(1/52)
+  p.ED_D <- 1 - (1-pAnn.ED_D)^(1/52)
+  p.Hosp_D <- 1 - (1-pAnn.Hosp_D)^(1/52)
+  
+  #Asthma Fatality * Spitzer OR for SABA overuse
+  pAnn.SCS_D_PRIM <- mortality$pSp.SCS_AF
+  pAnn.ED_D_PRIM <- mortality$pSp.ED_AF
+  pAnn.Hosp_D_PRIM <- mortality$pSp.HOSP_AF
+  
+  p.SCS_D_PRIM <- 1 - (1-pAnn.SCS_D_PRIM)^(1/52)
+  p.ED_D_PRIM <- 1 - (1-pAnn.ED_D_PRIM)^(1/52)
+  p.Hosp_D_PRIM <- 1 - (1-pAnn.Hosp_D_PRIM)^(1/52)
+
+#H0 Baseline Mortality
+  pAnn.H0C_D <- pAnn.H0NC_D <- mortality$b_mortality   # probability of death from no HCP management
+  p.H0C_D <- p.H0NC_D  <- p.H1C_D <- p.H1NC_D <-  1 - (1-pAnn.H0C_D)^(1/52)                 
+
+#Cost
+  #Med inhalations
+  inh.PRIM <- rgamma(n_sim,
+                         shape = psa_param[["inh.PRIM"]][["S1"]],
+                         scale = psa_param[["inh.PRIM"]][["S2"]])
+
+  inh.SYM <- rgamma(n_sim,
+                         shape = psa_param[["inh.SYM"]][["S1"]],
+                         scale = psa_param[["inh.SYM"]][["S2"]])
+  
+  inh.ICS <- rgamma(n_sim,
+                         shape = psa_param[["inh.ICS"]][["S1"]],
+                         scale = psa_param[["inh.ICS"]][["S2"]])
+
+  inh.SABA <- rgamma(n_sim,
+                         shape = psa_param[["inh.SABA"]][["S1"]],
+                         scale = psa_param[["inh.SABA"]][["S2"]])
+  
+  #Direct Medical Costs
+  c.HCP <- (rgamma(n_sim,
+                        shape = psa_param[["c.HCP"]][["S1"]],
+                        scale = psa_param[["c.HCP"]][["S2"]]))/52
+  c.AU <- rgamma(n_sim,
+                        shape = psa_param[["c.AU"]][["S1"]],
+                        scale = psa_param[["c.AU"]][["S2"]])
+  
+  c.SCS <- rgamma(n_sim,
+                        shape = psa_param[["c.SCS"]][["S1"]],
+                        scale = psa_param[["c.SCS"]][["S2"]])
+  c.ED <- rgamma(n_sim,
+                        shape = psa_param[["c.ED"]][["S1"]],
+                        scale = psa_param[["c.ED"]][["S2"]])
+  c.Hosp <- rgamma(n_sim,
+                        shape = psa_param[["c.Hosp"]][["S1"]],
+                        scale = psa_param[["c.Hosp"]][["S2"]])
+  
+  #Indirect Costs
+  c.timeHCP <- (rnorm(n = n_sim,
+                     mean = psa_param[["c.timeHCP"]][["S1"]],
+                     sd = psa_param[["c.timeHCP"]][["S2"]] )) * (1037/(60*52.1429*35))
+  
+  c.prodAU <- rlnorm(n = n_sim,
+                  meanlog = psa_param[["c.prodAU"]][["S1"]],
+                  sdlog = psa_param[["c.prodAU"]][["S2"]]) * 1037
+  
+  c.prodSCS <- rlnorm(n = n_sim,
+                  meanlog = psa_param[["c.prodSCS"]][["S1"]],
+                  sdlog = psa_param[["c.prodSCS"]][["S2"]]) * 1037
+  
+  c.prodED <- rlnorm(n = n_sim,
+                  meanlog = psa_param[["c.prodED"]][["S1"]],
+                  sdlog = psa_param[["c.prodED"]][["S2"]]) * 1037
+  
+  c.prodHosp <- rlnorm(n = n_sim,
+                  meanlog = psa_param[["c.prodHosp"]][["S1"]],
+                  sdlog = psa_param[["c.prodHosp"]][["S2"]]) * 1037
+  
+  #utility
+  u.H0 <- (rbeta(n = n_sim,
+                  shape1 = psa_param[["u.H0"]][["S1"]],
+                  shape2 = psa_param[["u.H0"]][["S2"]]))/52
+  
+  du.AU <- -(rlnorm(n = n_sim,
+                  meanlog = psa_param[["du.AU"]][["S1"]],
+                  sdlog = psa_param[["du.AU"]][["S2"]]))/52
+  
+  du.SCS <- -(rbeta(n = n_sim,
+                  shape1 = psa_param[["du.SCS"]][["S1"]],
+                  shape2 = psa_param[["du.SCS"]][["S2"]]))/52
+  du.ED <- -(rbeta(n = n_sim,
+                  shape1 = psa_param[["du.ED"]][["S1"]],
+                  shape2 = psa_param[["du.ED"]][["S2"]]))/52
+  du.Hosp <- -(rbeta(n = n_sim,
+                  shape1 = psa_param[["du.Hosp"]][["S1"]],
+                  shape2 = psa_param[["du.Hosp"]][["S2"]]))/52
+  
+  u.SCS  <- (u.H0 + du.SCS)
+  u.ED   <-  (u.H0 + du.ED)
+  u.Hosp <- (u.H0 + du.Hosp) 
+################################################################################################################################
+### Parameter dataframe ###
+df_psa <- data.frame(
+    ## Asthma Control Probability (proportion: mean % of weeks with well controlled asthma)l
+      p.H0_AC,
+      p.PRIM_AC,
+      p.SYM_AC,
+      p.H1_AC,
+      
+    ## Transition probabilities #
+      #Severe Exacerbation Rates * Exacerbation Proportion
+      #controlled (C)
+      p.H0C_SCS, 
+      p.H0C_ED,
+      p.H0C_Hosp,
+      
+      p.SYMC_SCS,
+      p.SYMC_ED,
+      p.SYMC_Hosp,
+      
+      p.H1C_SCS,
+      p.H1C_ED,
+      p.H1C_Hosp,
+      
+      #Not controlled (NC)
+      p.H0NC_SCS,
+      p.H0NC_ED,
+      p.H0NC_Hosp,
+      
+      p.SYMNC_SCS,
+      p.SYMNC_ED,
+      p.SYMNC_Hosp,
+      
+      p.H1NC_SCS,
+      p.H1NC_ED,
+      p.H1NC_Hosp,
+    
+      #SEVR -> H1
+      p.SEVR_H1, #Weekly probability of exiting SEVR
+    
+      #H0
+      p.H0_H1 = 0,
+    
+      #H1
+      p.H1_H0,               # probability of non-adherence to HCP management
+    
+        
+    ### Cost and utility inputs ###
+      ## Direct Medical costs (per week)
+      c.HCP,
+      c.AU,
+      c.SCS,
+      c.ED,
+      c.Hosp,
+      
+      ## Drug acquisition cost (per DAY) * 7 
+      c.PRIM     = 29.78*(inh.PRIM/160) * 7,               # cost of primatene
+      c.SYM      = 311.49*(inh.SYM/120) * 7,            # cost of symbicort
+      c.ICS      =  c.ICS <- 326.28*(inh.ICS/120)* 7,               # cost of ICS
+      c.SABA     = c.SABA <- 54.42*(inh.SABA/200)* 7,             # cost of SABA
+      c.ICS_SABA = (c.ICS + c.SABA),
+      
+      ## Indirect costs 
+      c.timeHCP,
+      c.prodAU,
+      
+      #Productivity loss due to severe exacerbation ** Assuming do not go to work for 2,4,7 days
+      c.prodSCS,
+      c.prodED,
+      c.prodHosp,
+      
+      ## Utility
+      du.AU,
+      du.SCS,
+      du.ED,
+      du.Hosp,
+      
+      
+      u.H0,          # utility of non-exacerbation
+      u.H1 = u.H0, 
+      u.SCS,     # utility of SCS
+      u.ED,
+      u.Hosp
+      
+  )
+  
+  v.du_exac  <- c(du.SCS, du.ED, du.Hosp)
+  v.u_exac  <- c(u.SCS, u.ED, u.Hosp)
+  return(df_psa)
+
+}
+```
+
+### Markov Model ###
 ```{r, Markov Model, include=FALSE}
 ############################### Markov Model  ###########################
 # The Markov function 
@@ -244,7 +559,6 @@ Markov <- function(params, v.M_1, n.t, v.n, d.c, d.e, trt=FALSE, res = TRUE) {
                      dimnames = list( paste("cycle", 0:n.t, sep = ""), v.n))
   
   m.TR[1, ]  <- v.M_1  # indicate the initial health state
-  
   
 #Mortality: asthma fatality and baseline mortality (not affected by PSA)
   #Asthma Fatality (baseline)
@@ -508,48 +822,9 @@ return(results)  # return the results
 
 ```
 
-### Base Case analysis ###
-```{r, Base Case Analysis}
-
-sim_markov_BC <- function(){
-##################################### Run the simulation ##################################
-sim_markov_no_trt <- Markov(f_gen_psa_base(), v.M_1, n.t, v.n, d.c, d.e) # run for no treatment
-sim_markov_PRIM    <- Markov(f_gen_psa_base(), v.M_1, n.t, v.n, d.c, d.e, trt = "primatene")  # run for treatement
-sim_markov_SYMB    <- Markov(f_gen_psa_base(), v.M_1, n.t, v.n, d.c, d.e, trt = "symbicort")  # run for treatement
-
-  
-#storing vectors
-  v.C <- c(sim_markov_no_trt$tc_hat, sim_markov_PRIM$tc_hat, sim_markov_SYMB$tc_hat) 
-  v.E <- c(sim_markov_no_trt$te_hat, sim_markov_PRIM$te_hat, sim_markov_SYMB$te_hat)
-  v.Cont <- c(sim_markov_no_trt$controlled, sim_markov_PRIM$controlled, sim_markov_SYMB$controlled)
-  v.Exac <- c(sim_markov_no_trt$severe_exac, sim_markov_PRIM$severe_exac, sim_markov_SYMB$severe_exac)
-
-# create the cost-effectiveness table
-table_markov <- as_tibble(cbind(v.C, v.E, v.Cont, v.Exac))
-table_markov$Strategy <- c("No treatment","Epinephrine","ICS-LABA")
-table_markov <- select(table_markov, Strategy, everything())
-colnames(table_markov) <- c("Strategy","Costs","QALYs", "Control","Exac")
-
-# calculate ICER
-table_markov <- table_markov %>%
-                    arrange(desc(QALYs)) %>% # no treatment is dominated by symbicort 
-                    mutate(delta_Costs = c(Costs[1]-Costs[3],Costs[2]-Costs[3], NA),  # calculate incremental costs
-                           delta_QALYs = c(QALYs[1]-QALYs[3],QALYs[2]-QALYs[3],NA),  # calculate incremental QALYs
-                           delta_control = c(Control[1]-Control[3],Control[2]-Control[3],NA),
-                           delta_exac = c(Exac[1]-Exac[3],Exac[2]-Exac[3],NA),
-                           ICER=delta_Costs/delta_QALYs) # calculate the ICER
-
-return(table_markov)
-}
-
-# write.csv(table_markov,"CEA_markov_v1.csv")
-#  write.csv(table_markov, "C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\CEA_Markov_BC_v1.csv")
-```
-
-
-### PSA ###
-```{r, PSA and Wrapper Function}
-### Function Wrapper <- probablistic function
+### Wrapper Function ###
+```{r, Wrapper Function}
+### Wrapper <- probablistic function
   f_wrapper <- function(fxn=f_gen_psa_base,
                         n_sim = 1000,
                         n.t = 52*77,
@@ -574,6 +849,7 @@ return(table_markov)
     v.Trt <- c("No OTC", 
                "Primatene", 
                "Symbicort")       # store the strategy names
+    
     mortality <- read_csv("mortality.csv")
 
   
@@ -612,20 +888,19 @@ return(table_markov)
     return(df_out) 
     
   } # end of function
-  
-  # mt <- as_tibble_row(c(Cost=mean(t$Cost), QALY=mean(t$QALY), Control=mean(t$Control), Exac=mean(t$Exac)))
-  #write.csv(t, "C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\CEA_Markov_BC_PSAtest.csv")
+```
 
-
+### Analysis ###
+```{r, Base Case}
 ################################# Cost-effectiveness analysis #############################
-sim_PSA_no_trt  <- f_wrapper(n_sim=1)
-sim_PSA_PRIM    <- f_wrapper(n_sim=1, trt = "primatene") 
-sim_PSA_SYMB    <- f_wrapper(n_sim=1, trt="symbicort")  
+sim_base_no_trt  <- f_wrapper(n_sim=1)
+sim_base_PRIM    <- f_wrapper(n_sim=1, trt = "primatene") 
+sim_base_SYMB    <- f_wrapper(n_sim=1, trt="symbicort")  
 
 
 
 # create the cost-effectiveness table
-table_markov <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB)
+table_markov <- rbind(sim_base_no_trt, sim_base_PRIM, sim_base_SYMB)
 table_markov$Strategy <- c("No treatment","Epinephrine","ICS-LABA")
 table_markov <- select(table_markov, Strategy, everything())
 
@@ -639,12 +914,122 @@ table_markov <- table_markov %>%
                            ICER=delta_Costs/delta_QALYs) # calculate the ICER
 
 print(table_markov)
+```
+```{r, Probablistic}
+################################# Cost-effectiveness analysis #############################
+sim_PSA_no_trt  <- f_wrapper(fxn=f_gen_psa, n_sim=1000)
+sim_PSA_PRIM    <- f_wrapper(fxn=f_gen_psa, n_sim=1000, trt = "primatene") 
+sim_PSA_SYMB    <- f_wrapper(fxn=f_gen_psa, n_sim=1000, trt="symbicort")  
+
+
+#All results
+  sim_PSA_no_trt$trt <- "noTrt"
+  sim_PSA_PRIM$trt <- "PRIM"
+  sim_PSA_SYMB$trt <- "SYMB"
+  
+  res <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB) 
+  write_csv(res,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\PSAResults_ALLv2.csv")
   
 
 ```
 
 
-### Extras ###
+### Plotting ###
+```{r, CEA plotting}
+#Importing data
+res <- read_csv("C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\PSAResults_ALLv2.csv")
+res$ID <- rep(1:1000,3)
+
+
+#### Markov Table ####
+  table_markov <- res %>% group_by(trt) %>% summarise(Costs = mean(Costs),
+                                                      QALYs = mean(QALYs),
+                                                      Control = mean(Control),
+                                                      Exac = mean(Exac)
+                                                      ) %>% mutate(delta_Costs = c(Costs[1]-Costs[2], NA, Costs[3]-Costs[2]),
+                                                                   delta_QALYs = c(QALYs[1]-QALYs[2], NA, QALYs[3]-QALYs[2]), 
+                                                                   delta_Control = c(Control[1]-Control[2], NA, Control[3]-Control[2]),
+                                                                   delta_Exac = c(Exac[1]-Exac[2], NA, Exac[3]-Exac[2]),
+                                                                   ICER=delta_Costs/delta_QALYs)
+
+#results_wide
+resw <- pivot_wider(res, names_from = trt, 
+                        values_from = c(Costs, QALYs, Control, Exac))
+  
+  #Delta SYMB vs PRIM
+  resw$deltaSP_Costs <- resw$Costs_SYMB - resw$Costs_PRIM
+  resw$deltaSP_QALYs <- resw$QALYs_SYMB - resw$QALYs_PRIM
+  
+  #Delta noTrt vs PRIM
+  resw$deltaNP_Costs <- resw$Costs_noTrt - resw$Costs_PRIM
+  resw$deltaNP_QALYs <- resw$QALYs_noTrt - resw$QALYs_PRIM
+
+### Cost-effectiveness Plane ###
+  CEA_plot <- function(data, 
+                       x, y, 
+                       title=NULL,
+                       xlab=NULL, ylab=NULL){
+    p <- ggplot(data = data,
+           aes(x,y))+
+      geom_point()+
+      labs(x=xlab, y=ylab, title=title)+
+      geom_hline(yintercept = 0)+
+      geom_vline(xintercept = 0)+
+      theme_bw() + theme(panel.border = element_blank(),
+                         # panel.grid.major = element_blank(),
+                         # panel.grid.minor = element_blank(), 
+                         axis.line = element_line(colour = "black") 
+                          )
+      
+  return(p)
+  }
+  
+    CEA_plot(data = resw, x = resw$deltaSP_QALYs, y = resw$deltaSP_Costs, title = "SYMB vs PRIM")
+    CEA_plot(data = resw, x = resw$deltaNP_QALYs, y = resw$deltaNP_Costs, title = "noTrt vs PRIM")
+
+#CEAC
+  CEAC_plot <- function(costs, qalys, title=NULL){
+  
+    WTP <- seq(from=0, to=150000, by=10000)
+
+   #INMB matrix
+    ceac.m <- data.frame(matrix(nrow=1000, ncol=length(WTP)))
+    for(i in 1:length(WTP)){
+    ceac.m[,i] <- qalys*WTP[i] - costs
+    }
+  
+  #CEAC proportions
+    ceac.prop <- data.frame(matrix(nrow=1, ncol=length(WTP)))
+    for(i in 1:length(WTP)){
+      ceac.prop[,i] <- sum(ceac.m[,i]>0) 
+    }
+  
+      ceac.prop <- as_tibble(t(ceac.prop/1000)) %>% rename(prop = V1)
+      ceac.prop$WTP <- WTP
+    
+  #Plotting 
+     p <- ggplot(data = ceac.prop,
+           aes(WTP,prop))+
+      geom_line()+
+      ylim(0,1)+
+      labs(y="Proportion", x="Willingness-to-pay", title=title)+
+      theme_bw() + theme(panel.border = element_blank(),
+                         # panel.grid.major = element_blank(),
+                         # panel.grid.minor = element_blank(), 
+                         axis.line = element_line(colour = "black") 
+                          )
+      
+      
+  l<-list(ceac.m, ceac.prop, p)
+  }
+
+  SP <- CEAC_plot(costs=resw$deltaSP_Costs, qalys=resw$deltaSP_QALYs) #SYMB vs PRIM
+  NP <- CEAC_plot(costs=resw$deltaNP_Costs, qalys=resw$deltaNP_QALYs) #No Trt vs PRIM
+
+  p <- SP[[3]] +
+    geom_line(aes(x=(NP[[2]][["WTP"]]), y=(NP[[2]][["prop"]]), color="red"))
+  p
+```
 ```{r, NMB for symbicort}
 f_gen_psa_NMB <- function(n_sim = 1000){
   
@@ -894,24 +1279,7 @@ ggsave("INMB.png", plot=y,
 
 ```
 
-```{r, CEA plotting}
-library(dampack)
-library(ggplot2)
-library(kableExtra)
-library(dplyr)
-
-# icer_asthma <- calculate_icers(cost=v.C, effect = v.E, strategies = v.Trt)
-# 
-# icer_asthma %>%
-#   kable() %>%
-#   kable_styling()
-# 
-# plot(icer_asthma, label="all")
-# 
-# ggplot(data=table_markov, aes(x=`QALYs Gained`, y=`Incremental Costs`))+geom_point()
-
-
-```
+### Extras ###
 ```{r, PSA parameter estimation}
 ### Estimating parameters
   estBetaParams <- function(mu, var) {
@@ -928,198 +1296,39 @@ library(dplyr)
   
   
 ```
-```{r, f_gen_psa}
-psa_param <- read_excel("C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/AsthmaCEA_Markov_2022_v5.xlsx", 
-    sheet = "R-extract") %>% select(-"PSA distribution")
-  t <- as_tibble(t(psa_param))
-  names(t) <- t[1,]
-  t<- t[-1,]
-  t <- mutate_all(t, function(x) as.numeric(as.character(x)))
-  rownames(t)<- c("S1", "S2")
+```{r, Base Case Analysis OLD}
 
-psa_param <- apply(t,2,as.list)
-rm(t)
+sim_markov_BC <- function(){
+##################################### Run the simulation ##################################
+sim_markov_no_trt <- Markov(f_gen_psa_base(), v.M_1, n.t, v.n, d.c, d.e) # run for no treatment
+sim_markov_PRIM    <- Markov(f_gen_psa_base(), v.M_1, n.t, v.n, d.c, d.e, trt = "primatene")  # run for treatement
+sim_markov_SYMB    <- Markov(f_gen_psa_base(), v.M_1, n.t, v.n, d.c, d.e, trt = "symbicort")  # run for treatement
 
-f_gen_psa <- function(n_sim = 1000){
   
-  require(truncnorm)
-  require(gtools)
-  
-### Asthma Control Probability ### (proportion: mean % of weeks with well controlled asthma)l
-  p.H0_AC <- p.PRIM_AC <- rbeta(n = n_sim,
-                                shape1 = psa_param[["p.H0_AC"]][["S1"]],
-                                shape2 = psa_param[["p.H0_AC"]][["S2"]])
-  p.SYM_AC <- rbeta(n = n_sim,
-                    shape1 = psa_param[["p.SYM_AC"]][["S1"]],
-                    shape2 = psa_param[["p.SYM_AC"]][["S2"]])
-  p.H1_AC <- 0.44
-  
-### OTHER ###  
-  #H1 Adherence
-  pAnn.H1_H0  <- (1-0.79)                             # probability of non-adherence to HCP management
+#storing vectors
+  v.C <- c(sim_markov_no_trt$tc_hat, sim_markov_PRIM$tc_hat, sim_markov_SYMB$tc_hat) 
+  v.E <- c(sim_markov_no_trt$te_hat, sim_markov_PRIM$te_hat, sim_markov_SYMB$te_hat)
+  v.Cont <- c(sim_markov_no_trt$controlled, sim_markov_PRIM$controlled, sim_markov_SYMB$controlled)
+  v.Exac <- c(sim_markov_no_trt$severe_exac, sim_markov_PRIM$severe_exac, sim_markov_SYMB$severe_exac)
 
-  #SEVR -> H1 (Recovery)
-  wk.SEVR_H1 <- rexp(n_sim,1/4)      #mean of 4 weeks before exiting recovery state
-  r.SEVR_H1 <- 1/wk.SEVR_H1      #weekly rate of 1 event (event being leaving SEVR state)
-  
-### SEV (Severe Exacerbation) ###
-  p.SCS_H0 <- p.ED_H0 <-p.Hosp_H0 <- 0 #Assumption that following severe exacerbation patient enters H1
-  RR.NC <- rlnorm(n = n_sim,
-                  meanlog = psa_param[["RR.NC"]][["S1"]],
-                  sdlog = psa_param[["RR.NC"]][["S2"]]) #RATE ratio of exacerbation for not controlled asthma
-  
-  #Exacerbation proportion (SCS, ED, HOSP)
-  prop.H0_SEV <- prop.PRIM_SEV <- rdirichlet(n = n_sim,
-                                             c(psa_param[["prop.H0_SEV_SCS"]][["S1"]],psa_param[["prop.H0_SEV_ED"]][["S1"]],psa_param[["prop.H0_SEV_Hosp"]][["S1"]]))
-  prop.SYM_SEV <- rdirichlet(n = n_sim,
-                             c(psa_param[["prop.SYM_SEV_SCS2"]][["S1"]],psa_param[["prop.SYM_SEV_ED2"]][["S1"]],psa_param[["prop.SYM_SEV_Hosp2"]][["S1"]]))
-  prop.H1_SEV <- c(0.784,0.152,0.064)
-  
-  #Cumulative rate from SYGMA trials
-  r.H0_SEVtot <- rgamma(n = n_sim,
-                         shape = psa_param[["r.H0"]][["S1"]],
-                         scale = psa_param[["r.H0"]][["S2"]])
-                        
-  r.SYM_SEVtot <- rgamma(n_sim,
-                         shape = psa_param[["r.SYM_2"]][["S1"]],
-                         scale = psa_param[["r.SYM_2"]][["S2"]])
-  
-  r.H1_SEVtot <-  rgamma(n_sim,
-                         shape = psa_param[["r.H1"]][["S1"]],
-                         scale = psa_param[["r.H1"]][["S2"]])
-  
-    #Rate of exacerbation by control group
-    #controlled (C)
-    r.H0C_SEV <- r.H0_SEVtot/(p.H0_AC + RR.NC - RR.NC*p.H0_AC) #yaghoubi et al.2020
-    r.SYMC_SEV <- r.SYM_SEVtot/(p.SYM_AC + RR.NC - RR.NC*p.SYM_AC) #yaghoubi et al.2020
-    r.H1C_SEV <- r.H1_SEVtot/(p.H1_AC + RR.NC - RR.NC*p.H1_AC) #yaghoubi et al.2020
-    
-    #Not controlled (NC)
-    r.H0NC_SEV <- r.H0C_SEV * RR.NC
-    r.SYMNC_SEV <- r.SYMC_SEV * RR.NC
-    r.H1NC_SEV <- r.H1C_SEV * RR.NC
-  
-### Mortality ### 
-#Asthma Fatality (baseline)
-  pAnn.SCS_D <- mortality$p.SCS_AF
-  pAnn.ED_D <- mortality$p.ED_AF
-  pAnn.Hosp_D <- mortality$p.HOSP_AF
-  
-  p.SCS_D <- 1 - (1-pAnn.SCS_D)^(1/52)
-  p.ED_D <- 1 - (1-pAnn.ED_D)^(1/52)
-  p.Hosp_D <- 1 - (1-pAnn.Hosp_D)^(1/52)
-  
-  #Asthma Fatality * Spitzer OR for SABA overuse
-  pAnn.SCS_D_PRIM <- mortality$pSp.SCS_AF
-  pAnn.ED_D_PRIM <- mortality$pSp.ED_AF
-  pAnn.Hosp_D_PRIM <- mortality$pSp.HOSP_AF
-  
-  p.SCS_D_PRIM <- 1 - (1-pAnn.SCS_D_PRIM)^(1/52)
-  p.ED_D_PRIM <- 1 - (1-pAnn.ED_D_PRIM)^(1/52)
-  p.Hosp_D_PRIM <- 1 - (1-pAnn.Hosp_D_PRIM)^(1/52)
+# create the cost-effectiveness table
+table_markov <- as_tibble(cbind(v.C, v.E, v.Cont, v.Exac))
+table_markov$Strategy <- c("No treatment","Epinephrine","ICS-LABA")
+table_markov <- select(table_markov, Strategy, everything())
+colnames(table_markov) <- c("Strategy","Costs","QALYs", "Control","Exac")
 
-#H0 Baseline Mortality
-  pAnn.H0C_D <- pAnn.H0NC_D <- mortality$b_mortality   # probability of death from no HCP management
-  p.H0C_D <- p.H0NC_D  <- p.H1C_D <- p.H1NC_D <-  1 - (1-pAnn.H0C_D)^(1/52)                 
+# calculate ICER
+table_markov <- table_markov %>%
+                    arrange(desc(QALYs)) %>% # no treatment is dominated by symbicort 
+                    mutate(delta_Costs = c(Costs[1]-Costs[3],Costs[2]-Costs[3], NA),  # calculate incremental costs
+                           delta_QALYs = c(QALYs[1]-QALYs[3],QALYs[2]-QALYs[3],NA),  # calculate incremental QALYs
+                           delta_control = c(Control[1]-Control[3],Control[2]-Control[3],NA),
+                           delta_exac = c(Exac[1]-Exac[3],Exac[2]-Exac[3],NA),
+                           ICER=delta_Costs/delta_QALYs) # calculate the ICER
 
-#Cost
-  inh.PRIM <- rgamma(n_sim,
-                         shape = psa_param[["inh.PRIM"]][["S1"]],
-                         scale = psa_param[["inh.PRIM"]][["S2"]])
-
-  inh.SYM <- rgamma(n_sim,
-                         shape = psa_param[["inh.SYM"]][["S1"]],
-                         scale = psa_param[["inh.SYM"]][["S2"]])
-################################################################################################################################
-### Parameter dataframe ###
-df_psa <- data.frame(
-    ## Asthma Control Probability (proportion: mean % of weeks with well controlled asthma)l
-      p.H0_AC,
-      p.PRIM_AC,
-      p.SYM_AC,
-      p.H1_AC,
-      
-    ## Transition probabilities #
-      #Severe Exacerbation Rates * Exacerbation Proportion
-      #controlled (C)
-      p.H0C_SCS = (1-exp(-r.H0C_SEV/52)) * prop.H0_SEV[1], # weekly probability of severe exacerbation with no OTC or primatene OTC prn
-      p.H0C_ED = (1-exp(-r.H0C_SEV/52)) * prop.H0_SEV[2],
-      p.H0C_Hosp = (1-exp(-r.H0C_SEV/52)) * prop.H0_SEV[3],
-      
-      p.SYMC_SCS = (1-exp(-r.SYMC_SEV/52)) * prop.SYM_SEV[1],	# weekly rate of severe exacerbation with symbicort PRN
-      p.SYMC_ED = (1-exp(-r.SYMC_SEV/52)) * prop.SYM_SEV[2],
-      p.SYMC_Hosp = (1-exp(-r.SYMC_SEV/52)) * prop.SYM_SEV[3],
-      
-      p.H1C_SCS = (1-exp(-r.H1C_SEV/52)) * prop.H1_SEV[1],	# weekly rate of severe exacerbation with HCP management (low dose ICS + SABA)
-      p.H1C_ED = (1-exp(-r.H1C_SEV/52)) * prop.H1_SEV[2],
-      p.H1C_Hosp = (1-exp(-r.H1C_SEV/52)) * prop.H1_SEV[3],
-      
-      #Not controlled (NC)
-      p.H0NC_SCS = (1-exp(-r.H0NC_SEV/52)) * prop.H0_SEV[1], # weekly probability of severe exacerbation with no OTC or primatene OTC prn
-      p.H0NC_ED = (1-exp(-r.H0NC_SEV/52)) * prop.H0_SEV[2],
-      p.H0NC_Hosp = (1-exp(-r.H0NC_SEV/52)) * prop.H0_SEV[3],
-      
-      p.SYMNC_SCS = (1-exp(-r.SYMNC_SEV/52)) * prop.SYM_SEV[1],	# weekly rate of severe exacerbation with symbicort PRN
-      p.SYMNC_ED = (1-exp(-r.SYMNC_SEV/52)) * prop.SYM_SEV[2],
-      p.SYMNC_Hosp = (1-exp(-r.SYMNC_SEV/52)) * prop.SYM_SEV[3],
-      
-      p.H1NC_SCS = (1-exp(-r.H1NC_SEV/52)) * prop.H1_SEV[1],	# weekly rate of severe exacerbation with HCP management (low dose ICS + SABA)
-      p.H1NC_ED = (1-exp(-r.H1NC_SEV/52)) * prop.H1_SEV[2],
-      p.H1NC_Hosp = (1-exp(-r.H1NC_SEV/52)) * prop.H1_SEV[3],
-    
-      #SEVR -> H1
-      p.SEVR_H1 = 1-exp(-r.SEVR_H1), #Weekly probability of exiting SEVR
-    
-      #H0
-      p.H0_H1 = 0,
-    
-      #H1
-      p.H1_H0  = 1 - (1-pAnn.H1_H0)^(1/52),               # probability of non-adherence to HCP management
-    
-        
-    ### Cost and utility inputs ###
-      ## Direct Medical costs (per week)
-      c.HCP     = 53,               # cost of HCP management
-      c.AU      = 15,              # cost of uncontrolled asthma week
-      c.SCS     = 163,               # cost of being in SCS 
-      c.ED      = 744,               # cost of being in ED
-      c.Hosp    = 12398,               # cost of being in HOSP
-      
-      ## Drug acquisition cost (per DAY) * 7 
-      c.PRIM     = 29.78*(inh.PRIM/160) * 7,               # cost of primatene
-      c.SYM      = 311.49*(inh.SYM/120) * 7,            # cost of symbicort
-      c.ICS      =  c.ICS <- 326.28*(inh.ICS/120)* 7,               # cost of ICS
-      c.SABA     = c.SABA <- 54.42*(inh.SABA/200)* 7,             # cost of SABA
-      c.ICS_SABA = (c.ICS + c.SABA),
-      
-      ## Indirect costs 
-      c.timeHCP  = 2, # HCP management time/week*Assuming 240 total minutes of 4 PCP visits per year, 20 min travel time, 40min wait, median wage $1037 in 2022
-      c.prodAU   = 132, # cost of productivity loss due to asthma not controlled days per week*
-      
-      #Productivity loss due to severe exacerbation ** Assuming do not go to work for 2,4,7 days
-      c.prodSCS  = 296, # productive lose due to severe exacerbation.
-      c.prodED = 593,
-      c.prodHosp = 1037,
-      
-      ## Utility
-      du.AU   = du.AU <- -0.06/52,                # disutility of asthma uncontrolled week
-      du.SCS  = du.SCS <- -0.10/52,               # disutility of systemic corticosteroid use
-      du.ED   = du.ED <- -0.15/52,                 # disutility of emergency department
-      du.Hosp = du.Hosp <- -0.20/52,                 # disutility of hospitalization
-      
-      
-      u.H0 = u.H0 <- 0.87/52,          # utility of non-exacerbation
-      u.H1 = u.H1 <- u.H0, 
-      u.SCS = u.SCS <- (u.H0 + du.SCS),     # utility of SCS
-      u.ED   = u.ED <- (u.H0 + du.ED),        # utility of emergency deparment 
-      u.Hosp    = u.Hosp <- (u.H0 + du.Hosp)   # utility of hospitalization
-      
-  )
-  
-  v.du_exac  <- c(du.SCS, du.ED, du.Hosp)
-  v.u_exac  <- c(u.SCS, u.ED, u.Hosp)
-  return(df_psa)
-
+return(table_markov)
 }
-```
 
+# write.csv(table_markov,"CEA_markov_v1.csv")
+#  write.csv(table_markov, "C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\CEA_Markov_BC_v1.csv")
+```
