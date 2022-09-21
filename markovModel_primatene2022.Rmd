@@ -41,8 +41,8 @@ Assumptions
 
 ##################################### Model input #########################################
 
-### Model Setup & Parameter Functions ###
-```{r, Model input setup, include=false}
+### Library ###
+```{r,  Library, include=false}
 library(here)
 library(tidyverse)
 library(dplyr)
@@ -51,23 +51,9 @@ library(dampack)
 library(ggplot2)
 library(kableExtra)
 
-   mortality <- read_csv("mortality.csv")
-  # ### Model input
-  #   n.t   <- 52*77 #(52*(100-23))            # time horizon, lifetime from 23yrs, 1 week cycle
-  #   
-  #   v.n   <- c("H0C","H0NC", #H0 no hcp mgt
-  #              "H1C", "H1NC", #H1 HCP MGT
-  #              "SCS","ED","HOSP", "SEVR", #SEV exacerbation
-  #              "D") #death
-  #   
-  #   n.s   <- length(v.n)                 # the number of health states
-  #   v.M_1 <- c(1,0,0,0,0,0,0,0,0)          # Initial health state distribution - Everyone starts at controlled no HCP management
-  #   
-  #   d.c   <- d.e <- (0.03/52)           # equal discounting of costs and QALYs by 3% per year
-  #   v.Trt <- c("No OTC", 
-  #              "Primatene", 
-  #              "Symbicort")       # store the strategy names
 ```
+
+### Parameter Sheets ###
 ```{r, f_gen_psa_base input}
 f_gen_psa_base <- function(n_sim = 1){
   
@@ -142,29 +128,7 @@ f_gen_psa_base <- function(n_sim = 1){
         p.H1NC_ED <- (1-exp(-r.H1NC_SEV/52)) * prop.H1_SEV[2]
         p.H1NC_Hosp <- (1-exp(-r.H1NC_SEV/52)) * prop.H1_SEV[3]
         
-### Mortality ### 
-#Asthma Fatality (baseline)
-  pAnn.SCS_D <- mortality$p.SCS_AF
-  pAnn.ED_D <- mortality$p.ED_AF
-  pAnn.Hosp_D <- mortality$p.HOSP_AF
-  
-  p.SCS_D <- 1 - (1-pAnn.SCS_D)^(1/52)
-  p.ED_D <- 1 - (1-pAnn.ED_D)^(1/52)
-  p.Hosp_D <- 1 - (1-pAnn.Hosp_D)^(1/52)
-  
-  #Asthma Fatality * Spitzer OR for SABA overuse
-  pAnn.SCS_D_PRIM <- mortality$pSp.SCS_AF
-  pAnn.ED_D_PRIM <- mortality$pSp.ED_AF
-  pAnn.Hosp_D_PRIM <- mortality$pSp.HOSP_AF
-  
-  p.SCS_D_PRIM <- 1 - (1-pAnn.SCS_D_PRIM)^(1/52)
-  p.ED_D_PRIM <- 1 - (1-pAnn.ED_D_PRIM)^(1/52)
-  p.Hosp_D_PRIM <- 1 - (1-pAnn.Hosp_D_PRIM)^(1/52)
-
-#H0 Baseline Mortality
-  pAnn.H0C_D <- pAnn.H0NC_D <- mortality$b_mortality   # probability of death from no HCP management
-  p.H0C_D <- p.H0NC_D  <- p.H1C_D <- p.H1NC_D <-  1 - (1-pAnn.H0C_D)^(1/52)                 
-
+### Mortality parameters built in markov model ###
         
 ### Cost and utility inputs ###
   ## Direct Medical costs (per week)
@@ -626,33 +590,10 @@ f_gen_psa <- function(n_sim = 1000){
       p.H1NC_Hosp <- (1-exp(-r.H1NC_SEV/52)) * prop.H1_SEV[,3]
     
     
-### Mortality ### 
+### Mortality parameters built in markov model ### 
 OR.AF <- rlnorm(n = n_sim,
                 meanlog = psa_param[["OR.AF"]][["S1"]],
-                sdlog = psa_param[["OR.AF"]][["S2"]])
-
-
-#Asthma Fatality (baseline)
-  pAnn.SCS_D <- mortality$p.SCS_AF
-  pAnn.ED_D <- mortality$p.ED_AF
-  pAnn.Hosp_D <- mortality$p.HOSP_AF
-  
-  p.SCS_D <- 1 - (1-pAnn.SCS_D)^(1/52)
-  p.ED_D <- 1 - (1-pAnn.ED_D)^(1/52)
-  p.Hosp_D <- 1 - (1-pAnn.Hosp_D)^(1/52)
-  
-  #Asthma Fatality * Spitzer OR for SABA overuse
-  pAnn.SCS_D_PRIM <- mortality$pSp.SCS_AF
-  pAnn.ED_D_PRIM <- mortality$pSp.ED_AF
-  pAnn.Hosp_D_PRIM <- mortality$pSp.HOSP_AF
-  
-  p.SCS_D_PRIM <- 1 - (1-pAnn.SCS_D_PRIM)^(1/52)
-  p.ED_D_PRIM <- 1 - (1-pAnn.ED_D_PRIM)^(1/52)
-  p.Hosp_D_PRIM <- 1 - (1-pAnn.Hosp_D_PRIM)^(1/52)
-
-#H0 Baseline Mortality
-  pAnn.H0C_D <- pAnn.H0NC_D <- mortality$b_mortality   # probability of death from no HCP management
-  p.H0C_D <- p.H0NC_D  <- p.H1C_D <- p.H1NC_D <-  1 - (1-pAnn.H0C_D)^(1/52)                 
+                sdlog = psa_param[["OR.AF"]][["S2"]]) #OR for saba overuse
 
 #Cost
   #Med inhalations & Drug Acquisition
@@ -832,7 +773,6 @@ df_psa <- data.frame(
 
 }
 ```
-
 
 ### Markov Model ###
 ```{r, Markov Model, include=FALSE}
@@ -1118,7 +1058,7 @@ return(results)  # return the results
 
 ```
 
-### Wrapper Function ###
+### Wrapper Function (Markov + Parameter Sheet -> output) ###
 ```{r, Wrapper Function}
 ### Wrapper <- probablistic function
   f_wrapper <- function(fxn=f_gen_psa_base(),
@@ -1146,10 +1086,7 @@ return(results)  # return the results
                "Primatene", 
                "Symbicort")       # store the strategy names
   
-  ### mortality 
-    mortality <- read_csv("mortality.csv") 
 
-  
   ### Reading in enviroment 
     environment(fxn) <- environment()
     environment(Markov)   <- environment()
@@ -1169,10 +1106,10 @@ return(results)  # return the results
     
     # run model for each row of PSA inputs
     for(t in 1:n_sim){
+      mortality <- mort.list[[t]]
       
       # store results in row of results matrix
       m_out[t,] <- Markov(df_psa[t,], v.M_1, n.t, v.n, d.c, d.e, trt = trt, res=FALSE) 
-      
     } # close model loop
     
     
@@ -1189,6 +1126,9 @@ return(results)  # return the results
 
 ### Analysis ###
 ```{r, Base Case}
+m <- read_csv("mortality.csv")
+mort.list <- list(m)
+
 ################################# Cost-effectiveness analysis #############################
 sim_base_no_trt  <- f_wrapper(n_sim=1)
 sim_base_PRIM    <- f_wrapper(n_sim=1, trt = "primatene") 
@@ -1213,7 +1153,6 @@ table_markov <- table_markov %>%
 print(table_markov)
 ```
 ```{r, Probablistic}
-
 ### setting up PSA ###
   set.seed(1996) #reproducible results
   psa <- f_gen_psa(n_sim=1000) #PSA sheet
@@ -1255,8 +1194,8 @@ sim_PSA_SYMB    <- f_wrapper(fxn=psa, n_sim=1000, trt="symbicort")
   sim_PSA_SYMB$trt <- "SYMB"
   
   res <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB) 
-  write_csv(res,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\PSAResults_ALLv3.csv")
-  write_csv(psa,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\PSAParams_ALLv3.csv")
+  write_csv(res,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\PSAResults_ALLv4.csv")
+  write_csv(psa,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\PSAParams_ALLv4.csv")
 
 
 ```
@@ -1264,7 +1203,7 @@ sim_PSA_SYMB    <- f_wrapper(fxn=psa, n_sim=1000, trt="symbicort")
 ### Plotting ###
 ```{r, CEA plotting}
 #Importing data
-res <- read_csv("C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\PSAResults_ALLv3.csv")
+res <- read_csv("C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\PSAResults_ALLv4.csv")
 res$ID <- rep(1:1000,3)
 
 
