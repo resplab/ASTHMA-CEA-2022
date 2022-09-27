@@ -54,8 +54,8 @@ library(kableExtra)
 ```
 
 ### Parameter Sheets ###
-```{r, f_gen_psa_base input}
-f_gen_psa_base <- function(n_sim = 1){
+```{r, f_gen_base input}
+f_gen_base <- function(n_sim = 1){
   
   require(truncnorm)  
   
@@ -64,7 +64,10 @@ f_gen_psa_base <- function(n_sim = 1){
   p.SYM_AC <- 0.344
   p.H1_AC <- 0.444
   
-### OTHER ###  
+### OTHER ### 
+  #H0 entering H1
+  p.H0_H1 <- 0
+  
   #H1 Adherence
   pAnn.H1_H0  <- (1-0.79)                             # probability of non-adherence to HCP management
   p.H1_H0  <- 1 - (1-pAnn.H1_H0)^(1/52)
@@ -206,7 +209,7 @@ df_psa <- data.frame(
       p.SEVR_H1, #Weekly probability of exiting SEVR
     
       #H0
-      p.H0_H1 = 0,
+      p.H0_H1,
     
       #H1
       p.H1_H0,
@@ -255,8 +258,15 @@ df_psa <- data.frame(
 
 }
 ```
-```{r, f_gen_psa_DSA input}
-f_gen_psa_DSA <- function(n_sim = 1000, DSA = FALSE){
+```{r, f_gen_dsa input}
+f_gen_dsa <- function(n_sim = 2,
+                      H0=FALSE,
+                      prim = F,
+                      saba = F,
+                      sym = F,
+                      payer = F,
+                      syg2=F,
+                      icssaba=F){
   
   require(truncnorm)  
   
@@ -266,6 +276,11 @@ f_gen_psa_DSA <- function(n_sim = 1000, DSA = FALSE){
   p.H1_AC <- 0.444
   
 ### OTHER ###  
+  #H0 entering H1
+  if(H0==FALSE){pAnn.H0_H1 <- 0}
+  if(H0==TRUE){pAnn.H0_H1 <- c(0,0.2)}
+  p.H0_H1  <- 1 - (1-pAnn.H0_H1)^(1/52)
+  
   #H1 Adherence
   pAnn.H1_H0  <- (1-0.79)                             # probability of non-adherence to HCP management
   p.H1_H0  <- 1 - (1-pAnn.H1_H0)^(1/52)
@@ -286,8 +301,10 @@ f_gen_psa_DSA <- function(n_sim = 1000, DSA = FALSE){
   
   #Cumulative rate from SYGMA trials
   r.H0_SEVtot <- 0.20 #syg1
-  r.SYM_SEVtot <- 0.11 #syg2
-  r.H1_SEVtot <- 0.09 #syg1
+  if(icssaba==F){r.SYM_SEVtot <- 0.11} #syg2
+  if(icssaba==T){r.SYM_SEVtot <- c(0.1*0.11, 1.5*0.11)}
+  if(syg2==F){r.H1_SEVtot <- 0.09} #syg1
+  if(syg2==T){r.H1_SEVtot <- c(0.09, 0.12)} #syg1
   
     #Rate of exacerbation by control group
     #controlled (C)
@@ -329,29 +346,7 @@ f_gen_psa_DSA <- function(n_sim = 1000, DSA = FALSE){
         p.H1NC_ED <- (1-exp(-r.H1NC_SEV/52)) * prop.H1_SEV[2]
         p.H1NC_Hosp <- (1-exp(-r.H1NC_SEV/52)) * prop.H1_SEV[3]
         
-### Mortality ### 
-#Asthma Fatality (baseline)
-  pAnn.SCS_D <- mortality$p.SCS_AF
-  pAnn.ED_D <- mortality$p.ED_AF
-  pAnn.Hosp_D <- mortality$p.HOSP_AF
-  
-  p.SCS_D <- 1 - (1-pAnn.SCS_D)^(1/52)
-  p.ED_D <- 1 - (1-pAnn.ED_D)^(1/52)
-  p.Hosp_D <- 1 - (1-pAnn.Hosp_D)^(1/52)
-  
-  #Asthma Fatality * Spitzer OR for SABA overuse
-  pAnn.SCS_D_PRIM <- mortality$pSp.SCS_AF
-  pAnn.ED_D_PRIM <- mortality$pSp.ED_AF
-  pAnn.Hosp_D_PRIM <- mortality$pSp.HOSP_AF
-  
-  p.SCS_D_PRIM <- 1 - (1-pAnn.SCS_D_PRIM)^(1/52)
-  p.ED_D_PRIM <- 1 - (1-pAnn.ED_D_PRIM)^(1/52)
-  p.Hosp_D_PRIM <- 1 - (1-pAnn.Hosp_D_PRIM)^(1/52)
-
-#H0 Baseline Mortality
-  pAnn.H0C_D <- pAnn.H0NC_D <- mortality$b_mortality   # probability of death from no HCP management
-  p.H0C_D <- p.H0NC_D  <- p.H1C_D <- p.H1NC_D <-  1 - (1-pAnn.H0C_D)^(1/52)                 
-
+### Mortality parameters built in markov model ###
         
 ### Cost and utility inputs ###
   ## Direct Medical costs (per week)
@@ -362,20 +357,44 @@ f_gen_psa_DSA <- function(n_sim = 1000, DSA = FALSE){
   c.Hosp    <- 12398               # cost of being in HOSP
   
   ## Drug acquisition cost (per DAY) * 7 
-  c.PRIM     <- 29.78*(0.52/160) * 7               # cost of primatene
-  c.SYM      <- 311.49*(0.52/120) * 7            # cost of symbicort
-  c.ICS      <- 326.28*(2/120) * 7               # cost of ICS
-  c.SABA     <- 54.42*(0.49/200) * 7             # cost of SABA
-  c.ICS_SABA <- c.ICS + c.SABA
+  #Med inhalations & Drug Acquisition
+    if(prim==FALSE){inh.PRIM <- 0.52}
+    if(sym==FALSE){inh.SYM <- 0.52}
+    inh.ICS <- 2
+    if(saba==FALSE){inh.SABA <- 0.49}
+    
+    if(prim==T){inh.PRIM <- c(1/7, 1)}
+    if(sym==T){inh.SYM <- c(1/7, 1)}
+    if(saba==T){inh.SABA <- c(1/7, 1)}
+
+
+  
+    c.PRIM     <- 29.78*(inh.PRIM/160) * 7               # cost of primatene
+    c.SYM      <- 311.49*(inh.SYM/120) * 7            # cost of symbicort
+    c.ICS      <- 326.28*(inh.ICS/120)* 7               # cost of ICS
+    c.SABA     <- 54.42*(inh.SABA/200)* 7             # cost of SABA
+    c.ICS_SABA <- c.ICS + c.SABA
+
   
   ## Indirect costs 
+    
+  if(payer==F){
   c.timeHCP  <- 3.03 # HCP management time/week*Assuming 240 total minutes of 4 PCP visits per year, 20 min travel time, 40min wait, median wage $1037 in 2022
   c.prodAU   <- 132  # cost of productivity loss due to asthma not controlled days per week*
   
   #Productivity loss due to severe exacerbation ** Assuming do not go to work for 2,4,7 days
   c.prodSCS  <- 296 # productive lose due to severe exacerbation.
   c.prodED <- 593
-  c.prodHosp <- 1037
+  c.prodHosp <- 1037}
+    
+  if(payer==T){
+  c.timeHCP  <- c(0,3.03) # HCP management time/week*Assuming 240 total minutes of 4 PCP visits per year, 20 min travel time, 40min wait, median wage $1037 in 2022
+  c.prodAU   <- c(0,132)  # cost of productivity loss due to asthma not controlled days per week*
+  
+  #Productivity loss due to severe exacerbation ** Assuming do not go to work for 2,4,7 days
+  c.prodSCS  <- c(0,296) # productive lose due to severe exacerbation.
+  c.prodED <- c(0,593)
+  c.prodHosp <- c(0,1037)}
   
   ## Utility
   du.AU   <-  -0.07/52                # disutility of asthma uncontrolled week
@@ -429,7 +448,7 @@ df_psa <- data.frame(
       p.SEVR_H1, #Weekly probability of exiting SEVR
     
       #H0
-      p.H0_H1 = 0,
+      p.H0_H1,
     
       #H1
       p.H1_H0,
@@ -478,9 +497,8 @@ df_psa <- data.frame(
 
 }
 
-
 ```
-```{r, f_gen_psa PSA input}
+```{r, f_gen_psa input}
 psa_param <- read_excel("C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/AsthmaCEA_Markov_2022_v6.xlsx", 
     sheet = "R-extract") %>% select(-"PSA distribution")
   t <- as_tibble(t(psa_param))
@@ -492,7 +510,8 @@ psa_param <- read_excel("C:/Users/Joseph/Desktop/Grad studies MSc and Applicatio
 psa_param <- apply(t,2,as.list)
 rm(t)
 
-f_gen_psa <- function(n_sim = 1000){
+f_gen_psa <- function(n_sim = 1000,
+                      payer = "societal"){
   
   require(truncnorm)
   require(gtools)
@@ -510,6 +529,9 @@ f_gen_psa <- function(n_sim = 1000){
                     shape2 = psa_param[["p.H1_AC"]][["S2"]])
   
 ### OTHER ###  
+  #H0 entering H1
+  p.H0_H1 <- 0
+  
   #H1 Adherence
   pAnn.H1_H0  <- 1 - (rbeta(n = n_sim,
                     shape1 = psa_param[["p.H1_H0"]][["S1"]],
@@ -638,7 +660,9 @@ OR.AF <- rlnorm(n = n_sim,
                         scale = psa_param[["c.Hosp"]][["S2"]])
   
   #Indirect Costs
-  c.timeHCP <- (rnorm(n = n_sim,
+ if(payer=="societal"){ 
+   
+   c.timeHCP <- (rnorm(n = n_sim,
                      mean = psa_param[["c.timeHCP"]][["S1"]],
                      sd = psa_param[["c.timeHCP"]][["S2"]] )) * (1037/(60*52.1429*35))
   
@@ -657,6 +681,16 @@ OR.AF <- rlnorm(n = n_sim,
   c.prodHosp <- rlnorm(n = n_sim,
                   meanlog = psa_param[["c.prodHosp"]][["S1"]],
                   sdlog = psa_param[["c.prodHosp"]][["S2"]]) * 1037
+ }
+  
+if(payer=="public"){ 
+ 
+  c.timeHCP <- 0
+  c.prodAU <- 0
+  c.prodSCS <- 0
+  c.prodED <- 0
+  c.prodHosp <- 0
+ }
   
   #utility
   u.H0 <- (rbeta(n = n_sim,
@@ -721,7 +755,7 @@ df_psa <- data.frame(
       p.SEVR_H1, #Weekly probability of exiting SEVR
     
       #H0
-      p.H0_H1 = 0,
+      p.H0_H1,
     
       #H1
       p.H1_H0,               # probability of non-adherence to HCP management
@@ -1061,7 +1095,7 @@ return(results)  # return the results
 ### Wrapper Function (Markov + Parameter Sheet -> output) ###
 ```{r, Wrapper Function}
 ### Wrapper <- probablistic function
-  f_wrapper <- function(fxn=f_gen_psa_base(),
+  f_wrapper <- function(fxn=f_gen_base(),
                         n_sim = 1000,
                         n.t = 52*77,
                         d.c = (0.03/52),
@@ -1194,10 +1228,193 @@ sim_PSA_SYMB    <- f_wrapper(fxn=psa, n_sim=1000, trt="symbicort")
   sim_PSA_SYMB$trt <- "SYMB"
   
   res <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB) 
-  write_csv(res,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\PSAResults_ALLv4.csv")
-  write_csv(psa,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\PSAParams_ALLv4.csv")
+  
+  # write_csv(res,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\PSAResults_ALLv4.csv")
+  # write_csv(psa,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\PSAParams_ALLv4.csv")
 
 
+```
+```{r, Scenario Analyses}
+### setting up PSA ###
+  set.seed(1996) #reproducible results
+  psa <- f_gen_psa(n_sim=1000) #PSA sheet
+  mort.fxn <- function(){
+        mortality <- read_csv("mortality.csv") %>% select(-pSp.SCS_AF,-pSp.ED_AF,-pSp.HOSP_AF)
+    m <- rep(list(mortality),1000)
+    ORF <- function(df, OR.AF = 2.6) {
+        OR.AF <- OR.AF
+        
+        o.SCS  <- df$p.SCS_AF/(1-df$p.SCS_AF)
+        o.ED   <- df$p.ED_AF/(1-df$p.ED_AF)
+        o.HOSP <- df$p.HOSP_AF/(1-df$p.HOSP_AF)
+        
+        oSp.SCS  <- o.SCS*OR.AF
+        oSp.ED   <-  o.ED *OR.AF
+        oSp.HOSP <- o.HOSP*OR.AF
+        
+        pSp.SCS_AF  <- oSp.SCS/(1+oSp.SCS)
+        pSp.ED_AF   <- oSp.ED/(1+oSp.ED)
+        pSp.HOSP_AF <- oSp.HOSP/(1+oSp.HOSP)
+        
+        p <- cbind(df,pSp.SCS_AF,pSp.ED_AF,pSp.HOSP_AF)
+        
+      }
+    t <- Map(ORF, m, OR.AF=psa$OR.AF)
+  }
+  mort.list <- mort.fxn()
+
+##Discounting##
+  #0%
+  sim_PSA_no_trt  <- f_wrapper(fxn=psa, d.c = 0, n_sim=1000)
+  sim_PSA_PRIM    <- f_wrapper(fxn=psa, d.c = 0, n_sim=1000, trt = "primatene") 
+  sim_PSA_SYMB    <- f_wrapper(fxn=psa, d.c = 0, n_sim=1000, trt="symbicort")  
+  
+    sim_PSA_no_trt$trt <- "noTrt"
+    sim_PSA_PRIM$trt <- "PRIM"
+    sim_PSA_SYMB$trt <- "SYMB"
+    
+    res_dc0 <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB) 
+
+  #1.5%
+  sim_PSA_no_trt  <- f_wrapper(fxn=psa, d.c = (0.015/52), n_sim=1000)
+  sim_PSA_PRIM    <- f_wrapper(fxn=psa, d.c = (0.015/52), n_sim=1000, trt = "primatene") 
+  sim_PSA_SYMB    <- f_wrapper(fxn=psa, d.c = (0.015/52), n_sim=1000, trt="symbicort")  
+  
+    sim_PSA_no_trt$trt <- "noTrt"
+    sim_PSA_PRIM$trt <- "PRIM"
+    sim_PSA_SYMB$trt <- "SYMB"
+    
+    res_dc1.5 <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB) 
+
+##Time Horizon##
+  # 10 years
+  sim_PSA_no_trt  <- f_wrapper(fxn=psa, n.t = (10*52), n_sim=1000)
+  sim_PSA_PRIM    <- f_wrapper(fxn=psa, n.t =  (10*52), n_sim=1000, trt = "primatene") 
+  sim_PSA_SYMB    <- f_wrapper(fxn=psa, n.t =  (10*52), n_sim=1000, trt="symbicort")  
+  
+    sim_PSA_no_trt$trt <- "noTrt"
+    sim_PSA_PRIM$trt <- "PRIM"
+    sim_PSA_SYMB$trt <- "SYMB"
+    
+    res_th10 <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB)
+    
+  # 30 years
+  sim_PSA_no_trt  <- f_wrapper(fxn=psa, n.t = (30*52), n_sim=1000)
+  sim_PSA_PRIM    <- f_wrapper(fxn=psa, n.t =  (30*52), n_sim=1000, trt = "primatene") 
+  sim_PSA_SYMB    <- f_wrapper(fxn=psa, n.t =  (30*52), n_sim=1000, trt="symbicort")  
+  
+    sim_PSA_no_trt$trt <- "noTrt"
+    sim_PSA_PRIM$trt <- "PRIM"
+    sim_PSA_SYMB$trt <- "SYMB"
+    
+    res_th30 <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB)
+    
+#Payer Perspective
+  set.seed(1996) #reproducible results
+  psa <- f_gen_psa(n_sim=1000, payer = "public") #PSA sheet
+  
+  sim_PSA_no_trt  <- f_wrapper(fxn=psa, n_sim=1000)
+  sim_PSA_PRIM    <- f_wrapper(fxn=psa, n_sim=1000, trt = "primatene") 
+  sim_PSA_SYMB    <- f_wrapper(fxn=psa, n_sim=1000, trt="symbicort")  
+  
+    sim_PSA_no_trt$trt <- "noTrt"
+    sim_PSA_PRIM$trt <- "PRIM"
+    sim_PSA_SYMB$trt <- "SYMB"
+    
+    res_public <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB)
+    
+
+
+```
+```{r, Deterministic OSA}
+m <- read_csv("mortality.csv")
+mort.list <- rep(list(m),2)
+
+#H0_H1
+  sim_PSA_no_trt  <- f_wrapper(n_sim=2, fxn = f_gen_dsa(H0=TRUE))
+  sim_PSA_PRIM    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(H0=TRUE), trt = "primatene") 
+  sim_PSA_SYMB    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(H0=TRUE), trt="symbicort")
+  
+  sim_PSA_no_trt$trt <- "noTrt"
+  sim_PSA_PRIM$trt <- "PRIM"
+  sim_PSA_SYMB$trt <- "SYMB"
+  H0_H1 <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB) 
+  
+#prim inhalations
+  sim_PSA_no_trt  <- f_wrapper(n_sim=2, fxn = f_gen_dsa(prim=TRUE))
+  sim_PSA_PRIM    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(prim=TRUE), trt = "primatene") 
+  sim_PSA_SYMB    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(prim=TRUE), trt="symbicort")
+
+  sim_PSA_no_trt$trt <- "noTrt"
+  sim_PSA_PRIM$trt <- "PRIM"
+  sim_PSA_SYMB$trt <- "SYMB"
+  prim_inh <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB)  
+
+#saba inhalations
+  sim_PSA_no_trt  <- f_wrapper(n_sim=2, fxn = f_gen_dsa(saba=TRUE))
+  sim_PSA_PRIM    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(saba=TRUE), trt = "primatene") 
+  sim_PSA_SYMB    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(saba=TRUE), trt="symbicort")
+
+  sim_PSA_no_trt$trt <- "noTrt"
+  sim_PSA_PRIM$trt <- "PRIM"
+  sim_PSA_SYMB$trt <- "SYMB"
+  saba_inh <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB)  
+  
+#sym inhalations
+  sim_PSA_no_trt  <- f_wrapper(n_sim=2, fxn = f_gen_dsa(sym=TRUE))
+  sim_PSA_PRIM    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(sym=TRUE), trt = "primatene") 
+  sim_PSA_SYMB    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(sym=TRUE), trt="symbicort")
+
+  sim_PSA_no_trt$trt <- "noTrt"
+  sim_PSA_PRIM$trt <- "PRIM"
+  sim_PSA_SYMB$trt <- "SYMB"
+  sym_inh <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB)  
+  
+#payer perspective
+  sim_PSA_no_trt  <- f_wrapper(n_sim=2, fxn = f_gen_dsa(payer=TRUE))
+  sim_PSA_PRIM    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(payer=TRUE), trt = "primatene") 
+  sim_PSA_SYMB    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(payer=TRUE), trt="symbicort")
+
+  sim_PSA_no_trt$trt <- "noTrt"
+  sim_PSA_PRIM$trt <- "PRIM"
+  sim_PSA_SYMB$trt <- "SYMB"
+  payer <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB)  
+
+#sygma 2 exac rate for H1
+  sim_PSA_no_trt  <- f_wrapper(n_sim=2, fxn = f_gen_dsa(syg2=TRUE))
+  sim_PSA_PRIM    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(syg2=TRUE), trt = "primatene") 
+  sim_PSA_SYMB    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(syg2=TRUE), trt="symbicort")
+  
+  sim_PSA_no_trt$trt <- "noTrt"
+  sim_PSA_PRIM$trt <- "PRIM"
+  sim_PSA_SYMB$trt <- "SYMB"
+  syg2 <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB)  
+
+#different exac rates for symbicort
+  sim_PSA_no_trt  <- f_wrapper(n_sim=2, fxn = f_gen_dsa(icssaba=TRUE))
+  sim_PSA_PRIM    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(icssaba=TRUE), trt = "primatene") 
+  sim_PSA_SYMB    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(icssaba=TRUE), trt="symbicort") 
+
+  sim_PSA_no_trt$trt <- "noTrt"
+  sim_PSA_PRIM$trt <- "PRIM"
+  sim_PSA_SYMB$trt <- "SYMB"
+  icssaba <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB)  
+
+rm(sim_PSA_no_trt,sim_PSA_PRIM,sim_PSA_SYMB)
+
+list(H0_H1,prim_inh,saba_inh,sym_inh, payer, syg2, icssaba)
+#results_wide
+resw <- pivot_wider(res, names_from = trt, 
+                        values_from = c(Costs, QALYs, Control, Exac))
+  
+  #Delta SYMB vs PRIM
+  resw$deltaSP_Costs <- resw$Costs_SYMB - resw$Costs_PRIM
+  resw$deltaSP_QALYs <- resw$QALYs_SYMB - resw$QALYs_PRIM
+  
+  #Delta noTrt vs PRIM
+  resw$deltaNP_Costs <- resw$Costs_noTrt - resw$Costs_PRIM
+  resw$deltaNP_QALYs <- resw$QALYs_noTrt - resw$QALYs_PRIM
+  
 ```
 
 ### Plotting ###
@@ -1231,32 +1448,76 @@ resw <- pivot_wider(res, names_from = trt,
   resw$deltaNP_QALYs <- resw$QALYs_noTrt - resw$QALYs_PRIM
 
 ### Cost-effectiveness Plane ###
-  CEA_plot <- function(data, 
-                       x, y, 
-                       title=NULL,
-                       xlab=NULL, ylab=NULL){
-    p <- ggplot(data = data,
-           aes(x,y))+
-      geom_point()+
-      labs(x=xlab, y=ylab, title=title)+
-      geom_hline(yintercept = 0)+
-      geom_vline(xintercept = 0)+
-      theme_bw() + theme(panel.border = element_blank(),
-                         # panel.grid.major = element_blank(),
-                         # panel.grid.minor = element_blank(), 
-                         axis.line = element_line(colour = "black") 
-                          )
-      
-  return(p)
-  }
   
-    CEA_plot(data = resw, x = resw$deltaSP_QALYs, y = resw$deltaSP_Costs, title = "SYMB vs PRIM")
-    CEA_plot(data = resw, x = resw$deltaNP_QALYs, y = resw$deltaNP_Costs, title = "noTrt vs PRIM")
+  #single plot
+    CEA_plot <- function(data, 
+                         x, y, 
+                         title=NULL,
+                         xlab=NULL, ylab=NULL){
+      p <- ggplot(data = data,
+             aes(x,y))+
+        geom_point()+
+        stat_ellipse()+
+        labs(x=xlab, y=ylab, title=title)+
+        geom_hline(yintercept = 0)+
+        geom_vline(xintercept = 0)+
+        theme_bw() + theme(panel.border = element_blank(),
+                           # panel.grid.major = element_blank(),
+                           # panel.grid.minor = element_blank(), 
+                           axis.line = element_line(colour = "black") 
+                            )
+        
+    return(p)
+    }
+    
+      CEA_plot(data = resw, x = resw$deltaSP_QALYs, y = resw$deltaSP_Costs, title = "SYMB")
+      CEA_plot(data = resw, x = resw$deltaNP_QALYs, y = resw$deltaNP_Costs, title = "noTrt")
+      
+  #combined plot
+     CEA_plot_JH <- function(res){
+      
+       #creating dataset
+       res <- res %>% select(ID, trt, Costs, QALYs)
+       
+       SYMB <- res %>% filter(trt=="SYMB")
+       noTrt <- res %>% filter(trt=="noTrt")
+       PRIM <- res %>% filter(trt=="PRIM")
+       
+        SYMB$delta_Costs <- SYMB$Costs - PRIM$Costs
+        SYMB$delta_QALYs <- SYMB$QALYs - PRIM$QALYs
+        noTrt$delta_Costs <- noTrt$Costs - PRIM$Costs
+        noTrt$delta_QALYs <- noTrt$QALYs - PRIM$QALYs
+        
+          res.temp <- rbind(SYMB, noTrt)
+
+       
+       #creating plot
+       p <- ggplot(data = res.temp, aes(delta_QALYs,delta_Costs, group = trt, color = trt))+
+        geom_point()+
+        stat_ellipse(type = "norm", lty=2)+
+        labs(x="QALYs", y="Costs")+
+        geom_hline(yintercept = 0)+
+        geom_vline(xintercept = 0)+
+        theme_bw() + theme(panel.border = element_blank(),
+                           # panel.grid.major = element_blank(),
+                           # panel.grid.minor = element_blank(), 
+                           axis.line = element_line(colour = "black"),
+                           legend.title = element_blank(),
+                           legend.position = "bottom"
+                            ) 
+
+       
+    return(p)
+     } 
+     CEA_plot_JH(res)
+  
+
 
 #CEAC
-  CEAC_plot <- function(costs, qalys, title=NULL){
+  CEAC <- function(costs, qalys, title=NULL){
   
     WTP <- seq(from=0, to=150000, by=10000)
+
 
    #INMB matrix
     ceac.m <- data.frame(matrix(nrow=1000, ncol=length(WTP)))
@@ -1289,13 +1550,68 @@ resw <- pivot_wider(res, names_from = trt,
   l<-list(ceac.m, ceac.prop, p)
   }
 
-  SP <- CEAC_plot(costs=resw$deltaSP_Costs, qalys=resw$deltaSP_QALYs) #SYMB vs PRIM
-  NP <- CEAC_plot(costs=resw$deltaNP_Costs, qalys=resw$deltaNP_QALYs) #No Trt vs PRIM
+  SP <- CEAC(costs=resw$deltaSP_Costs, qalys=resw$deltaSP_QALYs) #SYMB vs PRIM
+  NP <- CEAC(costs=resw$deltaNP_Costs, qalys=resw$deltaNP_QALYs) #No Trt vs PRIM
 
   p <- SP[[3]] +
     geom_line(aes(x=(NP[[2]][["WTP"]]), y=(NP[[2]][["prop"]]), color="red"))
   p
 ```
+```{r, Tornado}
+df <- '
+Parameter Lower_Bound Upper_Bound UL_Difference
+Parameter01 8074 11181 3108 
+Parameter02 8177 11007 2831 
+Parameter03 8879 10188 1308 
+Parameter04 4358 18697 14339 
+Parameter05 9073 10087 1013 
+Parameter06 12034 7572 4462 
+Parameter07 11357 7933 3423 
+Parameter08 9769 9202 567 
+Parameter09 8833 10403 1570 
+Parameter10 13450 4219 9231 
+Parameter11 10691 7915 2776 
+Parameter12 10036 8792 1244
+' %>% read_table2()
+
+# original value of output
+base.value <- 9504
+
+# get order of parameters according to size of intervals
+# (I use this to define the ordering of the factors which I then use to define the positions in the plot)
+order.parameters <- df %>% arrange(UL_Difference) %>%
+  mutate(Parameter=factor(x=Parameter, levels=Parameter)) %>%
+  select(Parameter) %>% unlist() %>% levels()
+
+# width of columns in plot (value between 0 and 1)
+width <- 0.95
+
+# get data frame in shape for ggplot and geom_rect
+df.2 <- df %>% 
+  # gather columns Lower_Bound and Upper_Bound into a single column using gather
+  gather(key='type', value='output.value', Lower_Bound:Upper_Bound) %>%
+  # just reordering columns
+  select(Parameter, type, output.value, UL_Difference) %>%
+  # create the columns for geom_rect
+  mutate(Parameter=factor(Parameter, levels=order.parameters),
+         ymin=pmin(output.value, base.value),
+         ymax=pmax(output.value, base.value),
+         xmin=as.numeric(Parameter)-width/2,
+         xmax=as.numeric(Parameter)+width/2)
+
+ggplot() + 
+  geom_rect(data = df.2, 
+            aes(ymax=ymax, ymin=ymin, xmax=xmax, xmin=xmin, fill=type)) +
+  theme_bw() + 
+  theme(axis.title.y=element_blank(), legend.position = 'bottom',
+        legend.title = element_blank()) + 
+  geom_hline(yintercept = base.value) +
+  scale_x_continuous(breaks = c(1:length(order.parameters)), 
+                     labels = order.parameters) +
+  coord_flip()
+
+```
+
 ```{r, NMB for symbicort}
 f_gen_psa_NMB <- function(n_sim = 1000){
   
