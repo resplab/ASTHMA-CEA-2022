@@ -50,6 +50,7 @@ library(readxl)
 library(dampack)
 library(ggplot2)
 library(kableExtra)
+library(purrr)
 
 ```
 
@@ -260,16 +261,11 @@ df_psa <- data.frame(
 ```
 ```{r, f_gen_dsa input}
 f_gen_dsa <- function(n_sim = 2,
-                      H0=FALSE,
-                      prim = F,
-                      saba = F,
-                      sym = F,
-                      payer = F,
-                      syg2=F,
-                      icssaba=F){
+                      DSA = FALSE){
   
   require(truncnorm)  
-  
+
+  r <- c(0.8,1.2)
 ### Asthma Control Probability ### (proportion: mean % of weeks with well controlled asthma)l
   p.H0_AC <- p.PRIM_AC <-  0.311
   p.SYM_AC <- 0.344
@@ -277,12 +273,13 @@ f_gen_dsa <- function(n_sim = 2,
   
 ### OTHER ###  
   #H0 entering H1
-  if(H0==FALSE){pAnn.H0_H1 <- 0}
-  if(H0==TRUE){pAnn.H0_H1 <- c(0,0.2)}
+  pAnn.H0_H1 <- 0
+  if(DSA=="H0_H1"){pAnn.H0_H1 <- c(0,0.2)}
   p.H0_H1  <- 1 - (1-pAnn.H0_H1)^(1/52)
   
   #H1 Adherence
   pAnn.H1_H0  <- (1-0.79)                             # probability of non-adherence to HCP management
+  if(DSA=="H1_H0"){pAnn.H1_H0 <- 0.21 * r}
   p.H1_H0  <- 1 - (1-pAnn.H1_H0)^(1/52)
 
   #SEVR -> H1 (Recovery) - mean of 4 weeks
@@ -301,11 +298,14 @@ f_gen_dsa <- function(n_sim = 2,
   
   #Cumulative rate from SYGMA trials
   r.H0_SEVtot <- 0.20 #syg1
-  if(icssaba==F){r.SYM_SEVtot <- 0.11} #syg2
-  if(icssaba==T){r.SYM_SEVtot <- c(0.1*0.11, 1.5*0.11)}
-  if(syg2==F){r.H1_SEVtot <- 0.09} #syg1
-  if(syg2==T){r.H1_SEVtot <- c(0.09, 0.12)} #syg1
+  if(DSA=="r.H0"){r.H0_SEVtot <- 0.20*r}
   
+  r.SYM_SEVtot <- 0.11 #syg2
+  if(DSA=="r.SYM"){r.SYM_SEVtot <- 0.11*r}
+
+  r.H1_SEVtot <- 0.09 #syg1
+  if(DSA=="r.H1"){r.H1_SEVtot <- 0.09*r}
+
     #Rate of exacerbation by control group
     #controlled (C)
     r.H0C_SEV <- r.H0_SEVtot/(p.H0_AC + RR.NC - RR.NC*p.H0_AC) #yaghoubi et al.2020
@@ -351,22 +351,33 @@ f_gen_dsa <- function(n_sim = 2,
 ### Cost and utility inputs ###
   ## Direct Medical costs (per week)
   c.HCP     <- 53               # cost of HCP management
+  if(DSA=="HCP"){c.HCP <- 53*r}
+  
   c.AU      <- 15              # cost of uncontrolled asthma week
+  if(DSA=="AU"){c.AU <- 15*r}
+  
   c.SCS     <- 163               # cost of being in SCS 
+  if(DSA=="SCS"){c.SCS <- 163*r}
+  
   c.ED      <- 744               # cost of being in ED
+  if(DSA=="ED"){c.ED <- 744*r}
+  
   c.Hosp    <- 12398               # cost of being in HOSP
+  if(DSA=="Hosp"){c.Hosp <- 12398*r}
   
   ## Drug acquisition cost (per DAY) * 7 
   #Med inhalations & Drug Acquisition
-    if(prim==FALSE){inh.PRIM <- 0.52}
-    if(sym==FALSE){inh.SYM <- 0.52}
-    inh.ICS <- 2
-    if(saba==FALSE){inh.SABA <- 0.49}
+    inh.PRIM <- 0.52
+    if(DSA=="inh.PRIM"){inh.PRIM <- 0.52*r}
     
-    if(prim==T){inh.PRIM <- c(1/7, 1)}
-    if(sym==T){inh.SYM <- c(1/7, 1)}
-    if(saba==T){inh.SABA <- c(1/7, 1)}
-
+    inh.SYM <- 0.52
+    if(DSA=="inh.SYM"){inh.SYM <- 0.52*r}
+    
+    inh.ICS <- 2
+    if(DSA=="inh.ICS"){inh.ICS <- 2*r}
+    
+    inh.SABA <- 0.49
+    if(DSA=="inh.SABA"){inh.SABA <- 0.49*r}
 
   
     c.PRIM     <- 29.78*(inh.PRIM/160) * 7               # cost of primatene
@@ -377,32 +388,31 @@ f_gen_dsa <- function(n_sim = 2,
 
   
   ## Indirect costs 
-    
-  if(payer==F){
   c.timeHCP  <- 3.03 # HCP management time/week*Assuming 240 total minutes of 4 PCP visits per year, 20 min travel time, 40min wait, median wage $1037 in 2022
   c.prodAU   <- 132  # cost of productivity loss due to asthma not controlled days per week*
   
   #Productivity loss due to severe exacerbation ** Assuming do not go to work for 2,4,7 days
   c.prodSCS  <- 296 # productive lose due to severe exacerbation.
   c.prodED <- 593
-  c.prodHosp <- 1037}
-    
-  if(payer==T){
-  c.timeHCP  <- c(0,3.03) # HCP management time/week*Assuming 240 total minutes of 4 PCP visits per year, 20 min travel time, 40min wait, median wage $1037 in 2022
-  c.prodAU   <- c(0,132)  # cost of productivity loss due to asthma not controlled days per week*
-  
-  #Productivity loss due to severe exacerbation ** Assuming do not go to work for 2,4,7 days
-  c.prodSCS  <- c(0,296) # productive lose due to severe exacerbation.
-  c.prodED <- c(0,593)
-  c.prodHosp <- c(0,1037)}
+  c.prodHosp <- 1037
+
   
   ## Utility
   du.AU   <-  -0.07/52                # disutility of asthma uncontrolled week
+  if(DSA=="du.AU"){du.AU <- (-0.07/52) * r}
+  
   du.SCS  <-  -0.10/52               # disutility of systemic corticosteroid use
+  if(DSA=="du.SCS"){du.SCS <- (-0.10/52) * r}
+
   du.ED   <-  -0.15/52                 # disutility of emergency department
+  if(DSA=="du.ED"){du.ED <- (-0.15/52) * r}
+
   du.Hosp <-  -0.20/52                 # disutility of hospitalization
+  if(DSA=="du.Hosp"){du.Hosp <- (-0.20/52) * r}
+
   
   u.H0 <- 0.87/52          # utility of non-exacerbation
+  if(DSA=="u.H0"){u.H0 <- (0.87/52)*r}
   u.H1 <- u.H0
   u.SCS <- u.H0 + du.SCS     # utility of SCS
   u.ED  <- u.H0 + du.ED        # utility of emergency deparment 
@@ -496,6 +506,13 @@ df_psa <- data.frame(
   return(df_psa)
 
 }
+
+dsa_params<-c("H0_H1","H1_H0",
+               "r.H0","r.SYM", "r.H1",
+               "HCP","AU","SCS","ED","Hosp",
+               "inh.PRIM","inh.SYM","inh.ICS","inh.SABA",
+               "du.AU","du.SCS","du.ED","du.Hosp","u.H0")
+
 
 ```
 ```{r, f_gen_psa input}
@@ -1327,93 +1344,46 @@ sim_PSA_SYMB    <- f_wrapper(fxn=psa, n_sim=1000, trt="symbicort")
 
 ```
 ```{r, Deterministic OSA}
-m <- read_csv("mortality.csv")
-mort.list <- rep(list(m),2)
 
-#H0_H1
-  sim_PSA_no_trt  <- f_wrapper(n_sim=2, fxn = f_gen_dsa(H0=TRUE))
-  sim_PSA_PRIM    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(H0=TRUE), trt = "primatene") 
-  sim_PSA_SYMB    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(H0=TRUE), trt="symbicort")
+#DSA setup
+  dsa <- purrr::pmap(list(DSA=dsa_params),
+                     f_gen_dsa) %>% bind_rows() #running all DSA parameters
+
+
+#mortality setup
+  m <- read_csv("mortality.csv")
+  mort.list <- rep(list(m),nrow(dsa))
+
+################################# Cost-effectiveness analysis #############################
+sim_base_no_trt  <- f_wrapper(fxn=dsa, n_sim=nrow(dsa))
+sim_base_PRIM    <- f_wrapper(fxn=dsa, n_sim=nrow(dsa), trt = "primatene") 
+sim_base_SYMB    <- f_wrapper(fxn=dsa, n_sim=nrow(dsa), trt="symbicort")  
+
+#naming function & setup for DSA
+dsa_setup <- function(df,title){
+  trt <- title
   
-  sim_PSA_no_trt$trt <- "noTrt"
-  sim_PSA_PRIM$trt <- "PRIM"
-  sim_PSA_SYMB$trt <- "SYMB"
-  H0_H1 <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB) 
+  dsa_params<-c("H0_H1","H1_H0",
+               "r.H0","r.SYM", "r.H1",
+               "HCP","AU","SCS","ED","Hosp",
+               "inh.PRIM","inh.SYM","inh.ICS","inh.SABA",
+               "du.AU","du.SCS","du.ED","du.Hosp","u.H0")
   
-#prim inhalations
-  sim_PSA_no_trt  <- f_wrapper(n_sim=2, fxn = f_gen_dsa(prim=TRUE))
-  sim_PSA_PRIM    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(prim=TRUE), trt = "primatene") 
-  sim_PSA_SYMB    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(prim=TRUE), trt="symbicort")
-
-  sim_PSA_no_trt$trt <- "noTrt"
-  sim_PSA_PRIM$trt <- "PRIM"
-  sim_PSA_SYMB$trt <- "SYMB"
-  prim_inh <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB)  
-
-#saba inhalations
-  sim_PSA_no_trt  <- f_wrapper(n_sim=2, fxn = f_gen_dsa(saba=TRUE))
-  sim_PSA_PRIM    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(saba=TRUE), trt = "primatene") 
-  sim_PSA_SYMB    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(saba=TRUE), trt="symbicort")
-
-  sim_PSA_no_trt$trt <- "noTrt"
-  sim_PSA_PRIM$trt <- "PRIM"
-  sim_PSA_SYMB$trt <- "SYMB"
-  saba_inh <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB)  
+  ID <- 1:nrow(df)
+  parameter <- rep(dsa_params,each=2)
+  level <- rep(c("low","high"),nrow(dsa)/2)
   
-#sym inhalations
-  sim_PSA_no_trt  <- f_wrapper(n_sim=2, fxn = f_gen_dsa(sym=TRUE))
-  sim_PSA_PRIM    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(sym=TRUE), trt = "primatene") 
-  sim_PSA_SYMB    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(sym=TRUE), trt="symbicort")
-
-  sim_PSA_no_trt$trt <- "noTrt"
-  sim_PSA_PRIM$trt <- "PRIM"
-  sim_PSA_SYMB$trt <- "SYMB"
-  sym_inh <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB)  
   
-#payer perspective
-  sim_PSA_no_trt  <- f_wrapper(n_sim=2, fxn = f_gen_dsa(payer=TRUE))
-  sim_PSA_PRIM    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(payer=TRUE), trt = "primatene") 
-  sim_PSA_SYMB    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(payer=TRUE), trt="symbicort")
+  df <- cbind(ID,df,trt,parameter,level)
 
-  sim_PSA_no_trt$trt <- "noTrt"
-  sim_PSA_PRIM$trt <- "PRIM"
-  sim_PSA_SYMB$trt <- "SYMB"
-  payer <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB)  
+  }
 
-#sygma 2 exac rate for H1
-  sim_PSA_no_trt  <- f_wrapper(n_sim=2, fxn = f_gen_dsa(syg2=TRUE))
-  sim_PSA_PRIM    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(syg2=TRUE), trt = "primatene") 
-  sim_PSA_SYMB    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(syg2=TRUE), trt="symbicort")
-  
-  sim_PSA_no_trt$trt <- "noTrt"
-  sim_PSA_PRIM$trt <- "PRIM"
-  sim_PSA_SYMB$trt <- "SYMB"
-  syg2 <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB)  
+  sim_base_no_trt  <- dsa_setup(sim_base_no_trt,"noTrt")
+  sim_base_PRIM    <- dsa_setup(sim_base_PRIM, "PRIM")
+  sim_base_SYMB    <- dsa_setup(sim_base_SYMB, "SYMB")
 
-#different exac rates for symbicort
-  sim_PSA_no_trt  <- f_wrapper(n_sim=2, fxn = f_gen_dsa(icssaba=TRUE))
-  sim_PSA_PRIM    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(icssaba=TRUE), trt = "primatene") 
-  sim_PSA_SYMB    <- f_wrapper(n_sim=2, fxn = f_gen_dsa(icssaba=TRUE), trt="symbicort") 
-
-  sim_PSA_no_trt$trt <- "noTrt"
-  sim_PSA_PRIM$trt <- "PRIM"
-  sim_PSA_SYMB$trt <- "SYMB"
-  icssaba <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB)  
-
-rm(sim_PSA_no_trt,sim_PSA_PRIM,sim_PSA_SYMB)
-
-list(H0_H1,prim_inh,saba_inh,sym_inh, payer, syg2, icssaba)
-#results_wide
-resw <- pivot_wider(res, names_from = trt, 
-                        values_from = c(Costs, QALYs, Control, Exac))
-  
-  #Delta SYMB vs PRIM
-  resw$deltaSP_Costs <- resw$Costs_SYMB - resw$Costs_PRIM
-  resw$deltaSP_QALYs <- resw$QALYs_SYMB - resw$QALYs_PRIM
-  
-  #Delta noTrt vs PRIM
-  resw$deltaNP_Costs <- resw$Costs_noTrt - resw$Costs_PRIM
-  resw$deltaNP_QALYs <- resw$QALYs_noTrt - resw$QALYs_PRIM
+  res <- rbind(sim_base_no_trt,sim_base_PRIM,sim_base_SYMB)
+  write_csv(res,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\DSAResults.csv")
   
 ```
 
@@ -1558,27 +1528,36 @@ resw <- pivot_wider(res, names_from = trt,
   p
 ```
 ```{r, Tornado}
-df <- '
-Parameter Lower_Bound Upper_Bound UL_Difference
-Parameter01 8074 11181 3108 
-Parameter02 8177 11007 2831 
-Parameter03 8879 10188 1308 
-Parameter04 4358 18697 14339 
-Parameter05 9073 10087 1013 
-Parameter06 12034 7572 4462 
-Parameter07 11357 7933 3423 
-Parameter08 9769 9202 567 
-Parameter09 8833 10403 1570 
-Parameter10 13450 4219 9231 
-Parameter11 10691 7915 2776 
-Parameter12 10036 8792 1244
-' %>% read_table2()
+res <- read_csv("C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\DSAResults.csv") 
 
-# original value of output
-base.value <- 9504
+#results_wide
+resw <- pivot_wider(res, names_from = trt, 
+                        values_from = c(Costs, QALYs, Control, Exac))
+  
+  #Delta SYMB vs PRIM
+  resw$deltaSP_Costs <- resw$Costs_SYMB - resw$Costs_PRIM
+  resw$deltaSP_QALYs <- resw$QALYs_SYMB - resw$QALYs_PRIM
+  
+  #Delta noTrt vs PRIM
+  resw$deltaNP_Costs <- resw$Costs_noTrt - resw$Costs_PRIM
+  resw$deltaNP_QALYs <- resw$QALYs_noTrt - resw$QALYs_PRIM
 
+tornado_plot <- function(df, comparison=FALSE){
+  
+  resw <- resw %>% select(parameter,level,deltaSP_Costs,deltaSP_QALYs)
+  resw$INMB <- resw$deltaSP_QALYs * 100000 - resw$deltaSP_Costs
+  
+  
+  
+  resw <- resw %>% select(parameter, level, INMB) %>%  pivot_wider(names_from = level, values_from = INMB) %>% rename(Parameter=parameter,
+                                                                                                                      Lower_Bound = low,
+                                                                                                                      Upper_Bound = high)
+  df<-resw
+  df$UL_Difference <- abs(df$Upper_Bound - df$Lower_Bound)
+  
+ 
+  
 # get order of parameters according to size of intervals
-# (I use this to define the ordering of the factors which I then use to define the positions in the plot)
 order.parameters <- df %>% arrange(UL_Difference) %>%
   mutate(Parameter=factor(x=Parameter, levels=Parameter)) %>%
   select(Parameter) %>% unlist() %>% levels()
@@ -1609,6 +1588,13 @@ ggplot() +
   scale_x_continuous(breaks = c(1:length(order.parameters)), 
                      labels = order.parameters) +
   coord_flip()
+  
+}
+
+  
+
+
+
 
 ```
 
