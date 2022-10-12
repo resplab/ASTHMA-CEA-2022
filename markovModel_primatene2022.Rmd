@@ -1532,69 +1532,70 @@ res <- read_csv("C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\
 
 #results_wide
 resw <- pivot_wider(res, names_from = trt, 
-                        values_from = c(Costs, QALYs, Control, Exac))
-  
-  #Delta SYMB vs PRIM
-  resw$deltaSP_Costs <- resw$Costs_SYMB - resw$Costs_PRIM
-  resw$deltaSP_QALYs <- resw$QALYs_SYMB - resw$QALYs_PRIM
-  
-  #Delta noTrt vs PRIM
-  resw$deltaNP_Costs <- resw$Costs_noTrt - resw$Costs_PRIM
-  resw$deltaNP_QALYs <- resw$QALYs_noTrt - resw$QALYs_PRIM
+                    values_from = c(Costs, QALYs, Control, Exac))
 
-tornado_plot <- function(df, comparison=FALSE){
+SP <- resw %>% select(parameter, level, Costs_PRIM, Costs_SYMB, QALYs_PRIM, QALYs_SYMB)
+  SP$delta_Costs <- SP$Costs_SYMB - SP$Costs_PRIM
+  SP$delta_QALYs <- SP$QALYs_SYMB - SP$QALYs_PRIM
+
+NP <- resw %>% select(parameter, level, Costs_PRIM, Costs_noTrt, QALYs_PRIM, QALYs_noTrt)
+  NP$delta_Costs <- NP$Costs_noTrt - NP$Costs_PRIM
+  NP$delta_QALYs <- NP$QALYs_noTrt - NP$QALYs_PRIM
+
+
+
+tornado_plot <- function(df, wtp=100000){
   
-  resw <- resw %>% select(parameter,level,deltaSP_Costs,deltaSP_QALYs)
-  resw$INMB <- resw$deltaSP_QALYs * 100000 - resw$deltaSP_Costs
+  #calculating INMB
+  df <- df %>% select(parameter,level,delta_Costs,delta_QALYs)
+  df$INMB <- df$delta_QALYs * wtp - df$delta_Costs 
   
-  
-  
-  resw <- resw %>% select(parameter, level, INMB) %>%  pivot_wider(names_from = level, values_from = INMB) %>% rename(Parameter=parameter,
+  #renaming columns & setting order for differences
+  df <- df %>% select(parameter, level, INMB) %>%  pivot_wider(names_from = level, values_from = INMB) %>% rename(Parameter=parameter,
                                                                                                                       Lower_Bound = low,
                                                                                                                       Upper_Bound = high)
-  df<-resw
   df$UL_Difference <- abs(df$Upper_Bound - df$Lower_Bound)
+  base.value <- df$Lower_Bound[1] #basecase value: when H0 to H1 is 0
   
- 
   
-# get order of parameters according to size of intervals
-order.parameters <- df %>% arrange(UL_Difference) %>%
-  mutate(Parameter=factor(x=Parameter, levels=Parameter)) %>%
-  select(Parameter) %>% unlist() %>% levels()
-
-# width of columns in plot (value between 0 and 1)
-width <- 0.95
-
-# get data frame in shape for ggplot and geom_rect
-df.2 <- df %>% 
-  # gather columns Lower_Bound and Upper_Bound into a single column using gather
-  gather(key='type', value='output.value', Lower_Bound:Upper_Bound) %>%
-  # just reordering columns
-  select(Parameter, type, output.value, UL_Difference) %>%
-  # create the columns for geom_rect
-  mutate(Parameter=factor(Parameter, levels=order.parameters),
-         ymin=pmin(output.value, base.value),
-         ymax=pmax(output.value, base.value),
-         xmin=as.numeric(Parameter)-width/2,
-         xmax=as.numeric(Parameter)+width/2)
-
-ggplot() + 
-  geom_rect(data = df.2, 
-            aes(ymax=ymax, ymin=ymin, xmax=xmax, xmin=xmin, fill=type)) +
-  theme_bw() + 
-  theme(axis.title.y=element_blank(), legend.position = 'bottom',
-        legend.title = element_blank()) + 
-  geom_hline(yintercept = base.value) +
-  scale_x_continuous(breaks = c(1:length(order.parameters)), 
-                     labels = order.parameters) +
-  coord_flip()
+  # get order of parameters according to size of intervals
+  order.parameters <- df %>% arrange(UL_Difference) %>%
+    mutate(Parameter=factor(x=Parameter, levels=Parameter)) %>%
+    select(Parameter) %>% unlist() %>% levels()
   
+  # width of columns in plot (value between 0 and 1)
+  width <- 0.95
+  
+  # get data frame in shape for ggplot and geom_rect
+  df.2 <- df %>% 
+    # gather columns Lower_Bound and Upper_Bound into a single column using gather
+    gather(key='type', value='output.value', Lower_Bound:Upper_Bound) %>%
+    # just reordering columns
+    select(Parameter, type, output.value, UL_Difference) %>%
+    # create the columns for geom_rect
+    mutate(Parameter=factor(Parameter, levels=order.parameters),
+           ymin=pmin(output.value, base.value),
+           ymax=pmax(output.value, base.value),
+           xmin=as.numeric(Parameter)-width/2,
+           xmax=as.numeric(Parameter)+width/2)
+  
+p <- ggplot() + 
+    geom_rect(data = df.2, 
+              aes(ymax=ymax, ymin=ymin, xmax=xmax, xmin=xmin, fill=type)) +
+    theme_bw() + 
+    theme(axis.title.y=element_blank(), legend.position = 'bottom',
+          legend.title = element_blank()) + 
+    geom_hline(yintercept = base.value) +
+    scale_x_continuous(breaks = c(1:length(order.parameters)), 
+                       labels = order.parameters) +
+    labs(xlab="INMB")+
+    coord_flip()
+  
+return(p)
 }
 
-  
-
-
-
+tornado_plot(SP)
+tornado_plot(NP)
 
 ```
 
