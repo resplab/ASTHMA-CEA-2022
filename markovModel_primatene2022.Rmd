@@ -847,6 +847,9 @@ Markov <- function(params, v.M_1, n.t, v.n, d.c, d.e, trt=FALSE, res = TRUE) {
   
   m.TR[1, ]  <- v.M_1  # indicate the initial health state
   
+  # creating a vector to asthma-related mortality
+  v.AR_D <- matrix(data=0,nrow= n.t +1, ncol = 1, dimnames = list( paste("cycle", 0:n.t, sep = ""), "AsthmaRelatedDeath"))
+  
 #Mortality: asthma fatality and baseline mortality (not affected by PSA)
   #Asthma Fatality (baseline)
     pAnn.SCS_D <- mortality$p.SCS_AF
@@ -905,6 +908,9 @@ for (i in 2:(n.t + 1)) {
     
     # calculate the proportion of the cohort in each state at time t
     m.TR[i, ] <- t(m.TR[i - 1, ]) %*% m.P
+    
+    #Asthma-related death vector
+    v.AR_D[i,] <- (m.TR[i,ncol(m.TR)] - m.TR[i-1,ncol(m.TR)]) * (p.SCS_D_PRIM[i] + p.ED_D_PRIM[i] + p.Hosp_D_PRIM[i]/(p.H0C_D[i]*8)) #proportion dead, dying from asthma
 
 }  # close the loop for the individuals 
 
@@ -969,6 +975,9 @@ SEVR.rem <- min((p.SEVR_H1*p.H1_AC + p.SEVR_H1*(1-p.H1_AC)+p.H0C_D[i-1]),1)
     
     # calculate the proportion of the cohort in each state at time t
     m.TR[i, ] <- t(m.TR[i - 1, ]) %*% m.P
+    
+    #Asthma-related death vector
+    v.AR_D[i,] <- (m.TR[i,ncol(m.TR)] - m.TR[i-1,ncol(m.TR)]) * (p.SCS_D[i] + p.ED_D[i] + p.Hosp_D[i]/(p.H0C_D[i]*8)) #proportion dead, dying from asthma
   
 }  # close the loop for the individuals
 
@@ -1033,6 +1042,12 @@ SEVR.rem <- min((p.SEVR_H1*p.H1_AC + p.SEVR_H1*(1-p.H1_AC)+p.H0C_D[i-1]),1)
     # print(p.H0C_D[i-1])
     m.TR[i, ] <- t(m.TR[i - 1, ]) %*% m.P
     # calculate the proportion of the cohort in each state at time t
+    
+    #Asthma-related death vector
+    v.AR_D[i,] <- (m.TR[i,ncol(m.TR)] - m.TR[i-1,ncol(m.TR)]) * (p.SCS_D[i] + p.ED_D[i] + p.Hosp_D[i]/(p.H0C_D[i]*8)) #proportion dead, dying from asthma
+    
+    
+    
   } # close the loop for the individuals 
 
 
@@ -1082,11 +1097,12 @@ te_hat <- t(te) %*% v.dwe  # total (discounted) QALY
   Hospoutcome <- sum(m.TR_temp$HOSP)
   
   SEVoutcome <- sum(m.TR_temp$SCS + m.TR_temp$ED + m.TR_temp$HOSP)
+  ARDoutcome <- sum(v.AR_D)
 
   if(res==TRUE){
 
 results <- list(m.TR = m.TR, tc_hat = tc_hat, te_hat = te_hat, tc=tc, te=te, v.dwc=v.dwc, v.dwe=v.dwe, vc=v.c,
-                controlled = cont, uncontrolled = UC, severe_exac = SEVoutcome) # store the results from the simulation in a list 
+                controlled = cont, uncontrolled = UC, severe_exac = SEVoutcome, asthma_death = ARDoutcome) # store the results from the simulation in a list 
 
 
 return(results)  # return the results
@@ -1160,7 +1176,7 @@ return(results)  # return the results
       mortality <- mort.list[[t]]
       
       # store results in row of results matrix
-      m_out[t,] <- Markov(df_psa[t,], v.M_1, n.t, v.n, d.c, d.e, trt = trt, res=FALSE) 
+      m_out[t,] <- Markov(df_psa[t,], v.M_1, n.t, v.n, d.c, d.e, trt = trt, res=res) 
     } # close model loop
     
     
@@ -1206,6 +1222,10 @@ summary_markov <- function(df, wtp=100000){
 }
 
 table_markov <- summary_markov(res)
+
+t<-as_tibble(as.matrix(table_markov))
+write.csv(t,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\BaseResults.csv")
+
 ```
 ```{r, Probablistic}
 ### setting up PSA ###
@@ -1526,27 +1546,45 @@ resw <- pivot_wider(res, names_from = trt,
       ceac.prop <- as_tibble(t(ceac.prop/1000)) %>% rename(prop = V1)
       ceac.prop$WTP <- WTP
     
-  #Plotting 
-     p <- ggplot(data = ceac.prop,
-           aes(WTP,prop))+
-      geom_line()+
-      ylim(0,1)+
-      labs(y="Proportion", x="Willingness-to-pay", title=title)+
-      theme_bw() + theme(panel.border = element_blank(),
-                         # panel.grid.major = element_blank(),
-                         # panel.grid.minor = element_blank(), 
-                         axis.line = element_line(colour = "black") 
-                          )
+ 
       
       
-  l<-list(ceac.m, ceac.prop, p)
+  l<-list(ceac.m, ceac.prop)
   }
 
   SP <- CEAC(costs=resw$deltaSP_Costs, qalys=resw$deltaSP_QALYs) #SYMB vs PRIM
   NP <- CEAC(costs=resw$deltaNP_Costs, qalys=resw$deltaNP_QALYs) #No Trt vs PRIM
+  
+ SP.prop <- SP[[2]]
+ SP.prop$trt  <- "Budesonide-formoterol"
+ NP.prop <- NP [[2]]
+ NP.prop$trt <- "no OTC inhaler"
 
-  p <- SP[[3]] +  geom_line(aes(x=(NP[[2]][["WTP"]]), y=(NP[[2]][["prop"]])))
-  p
+ df_prop <- rbind(SP.prop,NP.prop) 
+ 
+CEAC_plot <- function(df){
+  
+   #Plotting 
+     p <- ggplot(data = df,
+           aes(x=WTP,y=prop, group = trt, colour = trt))+
+      geom_line(linetype="dashed", position=position_jitter(w=50000,h=0))+
+      ylim(0,1)+
+      labs(y="Proportion", x="Willingness-to-pay")+
+      theme_bw() + theme(panel.border = element_blank(),
+                         # panel.grid.major = element_blank(),
+                         # panel.grid.minor = element_blank(), 
+                         axis.line = element_line(colour = "black"),
+                         legend.title = element_blank(),
+                         legend.position = "top"
+                          )
+
+return(p)     
+}
+
+CEAC_plot(df_prop)
+  
+      
+  
 ```
 ```{r, DSA Tornado}
 res <- read_csv("C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\DSAResults.csv") 
@@ -1663,6 +1701,11 @@ table_markov <- lapply(scen,summary_markov)
 table_markov_spread <- bind_rows(table_markov) #spreading data into spread sheet to examine on csv
 names<-c("dc0","dc6","th10", "th30", "public") %>% rep(each=3) # applying names results
   table_markov_spread$ID <- names
+  
+table_markov_spread <- table_markov_spread %>% group_by(ID) %>% arrange(desc(INMB), .by_group = T)
+  
+write_csv(table_markov_spread,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\ScenResults.csv")
+
 
 ```
 
@@ -1969,3 +2012,49 @@ return(table_markov)
 # write.csv(table_markov,"CEA_markov_v1.csv")
 #  write.csv(table_markov, "C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\CEA_Markov_BC_v1.csv")
 ```
+```{r, troubleshooting}
+list2env(as.list(params), envir=globalenv())
+
+mortality <- read_csv("mortality.csv")
+params <- f_gen_base()
+
+n.t   <- 52*77             # time horizon, lifetime from 23yrs, 1 week cycle
+    
+    v.n   <- c("H0C","H0NC", #H0 no hcp mgt
+               "H1C", "H1NC", #H1 HCP MGT
+               "SCS","ED","HOSP", "SEVR", #SEV exacerbation
+               "D") #death
+    
+    n.s   <- length(v.n)                 # the number of health states
+    v.M_1 <- c(1,0,0,0,0,0,0,0,0)          # Initial health state distribution - Everyone starts at controlled no HCP management
+    
+    d.c   <- d.e <- (0.03/52)           # equal discounting of costs and QALYs by 3% per year
+    v.Trt <- c("No OTC", 
+               "Primatene", 
+               "Symbicort")       # store the strategy names
+
+sim_base_no_trt  <- Markov(params, v.M_1, n.t, v.n, d.c, d.e)
+sim_base_PRIM    <- Markov(params, v.M_1, n.t, v.n, d.c, d.e,trt="primatene")
+sim_base_SYMB    <- Markov(params, v.M_1, n.t, v.n, d.c, d.e,trt="symbicort")  
+
+
+#Microsim
+n=7000000
+nm=5250000
+
+msim <- data.frame(strategy=c("Symbicort","No OTC","Primatene"),
+                   Costs.n=c(sim_base_SYMB[["tc_hat"]],sim_base_no_trt[["tc_hat"]],sim_base_PRIM[["tc_hat"]])*n,
+                   Costs.nm=c(sim_base_SYMB[["tc_hat"]],sim_base_no_trt[["tc_hat"]],sim_base_PRIM[["tc_hat"]])*nm,
+                   QALYs.n=c(sim_base_SYMB[["te_hat"]],sim_base_no_trt[["te_hat"]],sim_base_PRIM[["te_hat"]])*n,
+                   QALYs.nm=c(sim_base_SYMB[["te_hat"]],sim_base_no_trt[["te_hat"]],sim_base_PRIM[["te_hat"]])*nm,
+                   Exac.n=c(sim_base_SYMB[["severe_exac"]],sim_base_no_trt[["severe_exac"]],sim_base_PRIM[["severe_exac"]])*n,
+                   Exac.nm=c(sim_base_SYMB[["severe_exac"]],sim_base_no_trt[["severe_exac"]],sim_base_PRIM[["severe_exac"]])*nm,
+                   Control.n=c(sim_base_SYMB[["controlled"]],sim_base_no_trt[["controlled"]],sim_base_PRIM[["controlled"]])*n,
+                   Control.nm=c(sim_base_SYMB[["controlled"]],sim_base_no_trt[["controlled"]],sim_base_PRIM[["controlled"]])*nm,
+                   Death.n=c(sim_base_SYMB[["asthma_death"]],sim_base_no_trt[["asthma_death"]],sim_base_PRIM[["asthma_death"]])*n,
+                   Death.nm=c(sim_base_SYMB[["asthma_death"]],sim_base_no_trt[["asthma_death"]],sim_base_PRIM[["asthma_death"]])*nm                
+                   )
+
+write_csv(msim, "C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Manuscript/Figures/msim.csv")
+```
+

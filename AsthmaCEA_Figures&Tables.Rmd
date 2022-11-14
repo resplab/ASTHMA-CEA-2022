@@ -9,9 +9,7 @@ output:
 editor_options: 
   chunk_output_type: console
 ---
-
-# SETUP
-
+Library
 ```{r,  Library, include=F}
 library(here)
 library(tidyverse)
@@ -21,8 +19,11 @@ library(dampack)
 library(ggplot2)
 library(kableExtra)
 library(purrr)
+library(ggpubr)
 
 ```
+
+# SETUP
 
 ```{r, f_gen_base input, include=FALSE}
 f_gen_base <- function(n_sim = 1){
@@ -1260,19 +1261,20 @@ tornado_plot <- function(df, wtp=100000){
            ymax=pmax(output.value, base.value),
            xmin=as.numeric(Parameter)-width/2,
            xmax=as.numeric(Parameter)+width/2)
-  
+
+
 p <- ggplot() + 
     geom_rect(data = df.2, 
               aes(ymax=ymax, ymin=ymin, xmax=xmax, xmin=xmin, fill=type)) +
-    theme_bw() + 
+    theme_bw() +
     theme(axis.title.y=element_blank(), legend.position = 'bottom',
           legend.title = element_blank()) + 
     geom_hline(yintercept = base.value) +
     scale_x_continuous(breaks = c(1:length(order.parameters)), 
                        labels = order.parameters) +
-    labs(xlab="INMB")+
-    coord_flip()
+    coord_flip() + labs(y="Incremental Net Monetary Benefit")
   
+
 list(df,p)
 }
 ```
@@ -1338,15 +1340,146 @@ scen_table_markov_spread
 
 ##Tornado
 ```{r, Tornado plot}
-tornado_plot(SP)
-tornado_plot(NP)
+#INMB @ WTP 100k
+a <- tornado_plot(SP)
+b <- tornado_plot(NP)
+
+
+
+theme_set(theme_pubr())
+y <- ggarrange(a[[2]],b[[2]],
+               ncol=1,
+               nrow=2,
+               common.legend = TRUE,
+               labels =c('A','B'),
+               legend = 'bottom') 
+
+ggsave("tornado.png", plot=y, 
+       path="C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Manuscript/Figures",
+       width= 11,
+       height= 11,
+       dpi = 1000)
+
+#INMB @ WTP 150k, 50k
+SP150 <- tornado_plot(SP,wtp=150000)
+NP150 <- tornado_plot(NP,wtp=150000)
+
+SP50 <- tornado_plot(SP,wtp=50000)
+NP50 <- tornado_plot(NP,wtp=50000)
+
+tp150 <- ggarrange(SP150[[2]],NP150[[2]],
+               ncol=1,
+               nrow=2,
+               common.legend = TRUE,
+               labels =c('A','B'),
+               legend = 'bottom') 
+
+ggsave("tornado_150.png", plot=tp150, 
+       path="C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Manuscript/Figures",
+       width= 11,
+       height= 11,
+       dpi = 1000)
+
+tp50 <- ggarrange(SP50[[2]],NP50[[2]],
+               ncol=1,
+               nrow=2,
+               common.legend = TRUE,
+               labels =c('C','D'),
+               legend = 'bottom') 
+
+ggsave("tornado_50.png", plot=tp50, 
+       path="C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Manuscript/Figures",
+       width= 11,
+       height= 11,
+       dpi = 1000)
 
 ```
 
 ##CEA plot
 ```{r, CEA plot}
-CEA_plot(data = resw, x = resw$deltaSP_QALYs, y = resw$deltaSP_Costs, title = "SYMB")
+symb <- CEA_plot(data = resw, x = resw$deltaSP_QALYs, y = resw$deltaSP_Costs, xlab="Incremental QALY", ylab = "Incremental Cost")
 
-CEA_plot(data = resw, x = resw$deltaNP_QALYs, y = resw$deltaNP_Costs, title = "noTrt")
+noTrt <- CEA_plot(data = resw, x = resw$deltaNP_QALYs, y = resw$deltaNP_Costs, xlab="Incremental QALY", ylab = "Incremental Cost")
+
+theme_set(theme_pubr())
+y <- ggarrange(symb,noTrt,
+               ncol=2,
+               nrow=1,
+               common.legend = TRUE,
+               labels =c('A','B'),
+               legend = 'top') 
+
+ggsave("CEA_plotv2.png", plot=y, 
+       path="C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Manuscript/Figures",
+       width= 11,
+       height= 7,
+       dpi = 1000)
+
+```
+
+##CEAC plot
+```{r}
+ CEAC <- function(costs, qalys, title=NULL){
+  
+    WTP <- seq(from=0, to=150000, by=10000)
+
+
+   #INMB matrix
+    ceac.m <- data.frame(matrix(nrow=1000, ncol=length(WTP)))
+    for(i in 1:length(WTP)){
+    ceac.m[,i] <- qalys*WTP[i] - costs
+    }
+  
+  #CEAC proportions
+    ceac.prop <- data.frame(matrix(nrow=1, ncol=length(WTP)))
+    for(i in 1:length(WTP)){
+      ceac.prop[,i] <- sum(ceac.m[,i]>0) 
+    }
+  
+      ceac.prop <- as_tibble(t(ceac.prop/1000)) %>% rename(prop = V1)
+      ceac.prop$WTP <- WTP
+    
+ 
+      
+      
+  l<-list(ceac.m, ceac.prop)
+  }
+
+  SP <- CEAC(costs=resw$deltaSP_Costs, qalys=resw$deltaSP_QALYs) #SYMB vs PRIM
+  NP <- CEAC(costs=resw$deltaNP_Costs, qalys=resw$deltaNP_QALYs) #No Trt vs PRIM
+  
+ SP.prop <- SP[[2]]
+ SP.prop$trt  <- "Budesonide-formoterol"
+ NP.prop <- NP [[2]]
+ NP.prop$trt <- "no OTC inhaler"
+
+ df_prop <- rbind(SP.prop,NP.prop) 
+ 
+CEAC_plot <- function(df){
+  
+   #Plotting 
+     p <- ggplot(data = df,
+           aes(x=WTP,y=prop, group = trt, colour = trt))+
+      geom_line(linetype="dashed", position=position_jitter(w=50000,h=0))+
+      ylim(0,1)+
+      labs(y="Proportion", x="Willingness-to-pay")+
+      theme_bw() + theme(panel.border = element_blank(),
+                         # panel.grid.major = element_blank(),
+                         # panel.grid.minor = element_blank(), 
+                         axis.line = element_line(colour = "black"),
+                         legend.title = element_blank(),
+                         legend.position = "top"
+                          )
+
+return(p)     
+}
+
+z<-CEAC_plot(df_prop)
+z
+ggsave("CEAC_plot.png", plot=z,
+       path="C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Manuscript/Figures",
+       width= 11,
+       height= 7,
+       dpi = 1000)
 ```
 
