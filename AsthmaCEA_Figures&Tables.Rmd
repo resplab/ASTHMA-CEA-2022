@@ -1234,11 +1234,11 @@ tornado_plot <- function(df, wtp=100000){
   df$UL_Difference <- abs(df$Upper_Bound - df$Lower_Bound)
   base.value <- df$Lower_Bound[1] #basecase value: when H0 to H1 is 0
   
-  dsa_names<-c("Annual probability - Transitioning from no HCP to HCP (0%,20%)","Annual probability - Non-adherence to HCP (+/-20%) ",
-             "Annual rate of severe exacerbation - no treatment/inhaled epinephrine (+/-20%)","Annual rate of severe exacerbation - bud-form (+/-20%)", "Annual rate of severe exacerbation - HCP (+/-20%)",
-             "Cost - HCP management (+/-20%)","Cost - Asthma Uncontrolled Day (+/-20%)","Cost of severe exacerbation - SCS use (+/-20%) ","Cost of severe exacerbation - ED visit + SCS use (+/-20%)","Cost of severe exacerbation - Hospitalization (+/-20%)",
-             "Inhalations per day - inhaled epinephrine (+/-20%)","Inhalations per day - bud-form (+/-20%)","Inhalations per day - ICS (+/-20%)","Inhalations per day - inhaled SABA (+/-20%)",
-             "Disutility - Asthma Uncontrolled Day (+/-20%)","Disutility of severe exacerbation - SCS use (+/-20%)","Disutility of severe exacerbation - ED visit + SCS use (+/-20%)","Disutility of severe exacerbation - Hospitalization (+/-20%)","Utility - non-exacerbation (+/-20%)")
+  dsa_names<-c("Annual probability - Transitioning from no HCP to HCP (0%,20%)","Annual probability - Non-adherence to HCP (+/-20%)",
+             "Annual rate of severe exacerbation - No OTC inhaler/IE (+/-20%)","Annual rate of severe exacerbation - Bud-form (+/-20%)", "Annual rate of severe exacerbation - HCP (+/-20%)",
+             "Cost - HCP management (+/-20%)","Cost - Asthma not well-controlled day (+/-20%)","Cost of severe exacerbation - SCS use (+/-20%)","Cost of severe exacerbation - ED visit + SCS use (+/-20%)","Cost of severe exacerbation - Hospitalization (+/-20%)",
+             "Inhalations per day - IE (+/-20%)","Inhalations per day - Bud-form (+/-20%)","Inhalations per day - ICS (+/-20%)","Inhalations per day - SABA (+/-20%)",
+             "Disutility - Asthma not well-controlled day (+/-20%)","Disutility of severe exacerbation - SCS use (+/-20%)","Disutility of severe exacerbation - ED visit + SCS use (+/-20%)","Disutility of severe exacerbation - Hospitalization (+/-20%)","Utility - Non-exacerbation (+/-20%)")
   
   df$Parameter <- dsa_names
   # get order of parameters according to size of intervals

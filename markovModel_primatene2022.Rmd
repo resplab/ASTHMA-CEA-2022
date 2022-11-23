@@ -46,12 +46,12 @@ Assumptions
 library(here)
 library(tidyverse)
 library(dplyr)
-library(readxl)
 library(dampack)
 library(ggplot2)
-library(kableExtra)
 library(purrr)
-library(doParallel)
+library(ggpubr)
+library(readxl)
+
 
 ```
 
@@ -830,7 +830,7 @@ df_psa <- data.frame(
 ```{r, Markov Model, include=FALSE}
 ############################### Markov Model  ###########################
 # The Markov function 
-Markov <- function(params, v.M_1, n.t, v.n, d.c, d.e, trt=FALSE, res = TRUE) {
+Markov <- function(params, v.M_1, n.t, v.n, d.c, d.e, trt=FALSE, res=F) {
 # Arguments:  
   # v.M_1:   initial allocation of cohort across states
   # n.t:     total number of cycles to run the model
@@ -848,8 +848,7 @@ Markov <- function(params, v.M_1, n.t, v.n, d.c, d.e, trt=FALSE, res = TRUE) {
   
   m.TR[1, ]  <- v.M_1  # indicate the initial health state
   
-  # creating a vector to asthma-related mortality
-  v.AR_D <- matrix(data=0,nrow= n.t +1, ncol = 1, dimnames = list( paste("cycle", 0:n.t, sep = ""), "AsthmaRelatedDeath"))
+ 
   
 #Mortality: asthma fatality and baseline mortality (not affected by PSA)
   #Asthma Fatality (baseline)
@@ -876,7 +875,7 @@ Markov <- function(params, v.M_1, n.t, v.n, d.c, d.e, trt=FALSE, res = TRUE) {
 
 with(as.list(params),{  
    
-  if(trt=="primatene"){
+if(trt=="primatene"){
   
 for (i in 2:(n.t + 1)) { 
     
@@ -890,9 +889,23 @@ for (i in 2:(n.t + 1)) {
   Hosp.rem <-min((p.Hosp_D_PRIM[i-1]+p.H0C_D[i-1]),1)
   SEVR.rem <- min((p.SEVR_H1*p.H1_AC + p.SEVR_H1*(1-p.H1_AC)+p.H0C_D[i-1]),1)
 
-    
-  # create the transition matrix for each model cycle
-    m.P <- matrix(c(
+  if(p.H0C_D[i-1] == 1){ #last cycle if background mortality ==1 then set everything to 0
+     m.P<-  matrix(c(
+                  0, 0, 0, 0, 0, 0, 0, 0, 1, #H0C
+                  0, 0, 0, 0, 0, 0, 0, 0, 1, #H0NC
+                  0, 0, 0, 0, 0, 0, 0, 0, 1, #H1C
+                  0, 0, 0, 0, 0, 0, 0, 0, 1, #H1NC
+                  0, 0, 0, 0, 0, 0, 0, 0, 1, #SCS
+                  0, 0, 0, 0, 0, 0, 0, 0, 1, #ED
+                  0, 0, 0, 0, 0, 0, 0, 0, 1, #Hosp
+                  0, 0, 0, 0, 0, 0, 0, 0, 1, #SEVR
+                  0, 0, 0, 0, 0, 0, 0, 0, 1),#D
+                  nrow = n.s, ncol = n.s, byrow = T,
+                  dimnames = list(v.n, v.n))
+
+  }else{
+     # create the transition matrix for each model cycle
+          m.P<- matrix(c(
                     (1-H0C.rem)*p.H0_AC,(1-H0C.rem)*(1-p.H0_AC), p.H0_H1*p.H1_AC, p.H0_H1*(1-p.H1_AC), p.H0C_SCS, p.H0C_ED, p.H0C_Hosp, 0, p.H0C_D[i-1], #H0C
                     (1-H0NC.rem)*p.H0_AC,(1-H0NC.rem)*(1-p.H0_AC), p.H0_H1*p.H1_AC, p.H0_H1*(1-p.H1_AC), p.H0NC_SCS, p.H0NC_ED, p.H0NC_Hosp, 0, p.H0NC_D[i-1], #H0NC 
                     p.H1_H0*p.H0_AC,p.H1_H0*(1-p.H0_AC),(1 - H1C.rem)*p.H1_AC,(1 - H1C.rem)*(1-p.H1_AC),p.H1C_SCS,p.H1C_ED,p.H1C_Hosp, 0, p.H1C_D[i-1], #H1C
@@ -904,14 +917,13 @@ for (i in 2:(n.t + 1)) {
                     0, 0, 0, 0, 0, 0, 0, 0, 1), #D
                   nrow = n.s, ncol = n.s, byrow = T,
                   dimnames = list(v.n, v.n))
-    
-    # print(m.P) # show transition matrix for each model cycle to make sure p.H0_D is working - can remove after debugging
+       
+  }
     
     # calculate the proportion of the cohort in each state at time t
     m.TR[i, ] <- t(m.TR[i - 1, ]) %*% m.P
     
-    #Asthma-related death vector
-    v.AR_D[i,] <- (m.TR[i,ncol(m.TR)] - m.TR[i-1,ncol(m.TR)]) * (p.SCS_D_PRIM[i] + p.ED_D_PRIM[i] + p.Hosp_D_PRIM[i]/(p.H0C_D[i]*8)) #proportion dead, dying from asthma
+   
 
 }  # close the loop for the individuals 
 
@@ -941,8 +953,8 @@ for (i in 2:(n.t + 1)) {
   
   } 
   
-  else{
-  if(trt=="symbicort"){
+ 
+if(trt=="symbicort"){
     
   # run the simulation for symbicort
  for (i in 2:(n.t + 1)) { 
@@ -957,6 +969,21 @@ ED.rem <- min((p.ED_D[i-1]+p.H0C_D[i-1]),1)
 Hosp.rem <- min((p.Hosp_D[i-1]+p.H0C_D[i-1]),1)
 SEVR.rem <- min((p.SEVR_H1*p.H1_AC + p.SEVR_H1*(1-p.H1_AC)+p.H0C_D[i-1]),1)
 
+ if(p.H0C_D[i-1] == 1){ #last cycle if background mortality ==1 then set everything to 0
+     m.P<-  matrix(c(
+                  0, 0, 0, 0, 0, 0, 0, 0, 1, #H0C
+                  0, 0, 0, 0, 0, 0, 0, 0, 1, #H0NC
+                  0, 0, 0, 0, 0, 0, 0, 0, 1, #H1C
+                  0, 0, 0, 0, 0, 0, 0, 0, 1, #H1NC
+                  0, 0, 0, 0, 0, 0, 0, 0, 1, #SCS
+                  0, 0, 0, 0, 0, 0, 0, 0, 1, #ED
+                  0, 0, 0, 0, 0, 0, 0, 0, 1, #Hosp
+                  0, 0, 0, 0, 0, 0, 0, 0, 1, #SEVR
+                  0, 0, 0, 0, 0, 0, 0, 0, 1),#D
+                  nrow = n.s, ncol = n.s, byrow = T,
+                  dimnames = list(v.n, v.n))
+
+  }else{
 
   # create the transition matrix for each model cycle
     m.P <- matrix(c(
@@ -974,13 +1001,10 @@ SEVR.rem <- min((p.SEVR_H1*p.H1_AC + p.SEVR_H1*(1-p.H1_AC)+p.H0C_D[i-1]),1)
     
     # print(m.P) # show transition matrix for each model cycle to make sure p.H0_D is working - can remove after debugging
     
-    # calculate the proportion of the cohort in each state at time t
-    m.TR[i, ] <- t(m.TR[i - 1, ]) %*% m.P
-    
-    #Asthma-related death vector
-    v.AR_D[i,] <- (m.TR[i,ncol(m.TR)] - m.TR[i-1,ncol(m.TR)]) * (p.SCS_D[i] + p.ED_D[i] + p.Hosp_D[i]/(p.H0C_D[i]*8)) #proportion dead, dying from asthma
-  
-}  # close the loop for the individuals
+  }# close the loop for the individuals
+# calculate the proportion of the cohort in each state at time t
+ m.TR[i, ] <- t(m.TR[i - 1, ]) %*% m.P
+}  
 
   # create vectors of utility and costs for each state
   v.c <- c(
@@ -1007,7 +1031,8 @@ SEVR.rem <- min((p.SEVR_H1*p.H1_AC + p.SEVR_H1*(1-p.H1_AC)+p.H0C_D[i-1]),1)
   
   }
     
-  else{ #no treatment
+
+if(trt==F){ #no treatment
 
 
 # run the simulation for no treatment
@@ -1024,6 +1049,21 @@ ED.rem <- min((p.ED_D[i-1]+p.H0C_D[i-1]),1)
 Hosp.rem <- min((p.Hosp_D[i-1]+p.H0C_D[i-1]),1)
 SEVR.rem <- min((p.SEVR_H1*p.H1_AC + p.SEVR_H1*(1-p.H1_AC)+p.H0C_D[i-1]),1)
 
+if(p.H0C_D[i-1] == 1){ #last cycle if background mortality ==1 then set everything to 0
+     m.P<-  matrix(c(
+                  0, 0, 0, 0, 0, 0, 0, 0, 1, #H0C
+                  0, 0, 0, 0, 0, 0, 0, 0, 1, #H0NC
+                  0, 0, 0, 0, 0, 0, 0, 0, 1, #H1C
+                  0, 0, 0, 0, 0, 0, 0, 0, 1, #H1NC
+                  0, 0, 0, 0, 0, 0, 0, 0, 1, #SCS
+                  0, 0, 0, 0, 0, 0, 0, 0, 1, #ED
+                  0, 0, 0, 0, 0, 0, 0, 0, 1, #Hosp
+                  0, 0, 0, 0, 0, 0, 0, 0, 1, #SEVR
+                  0, 0, 0, 0, 0, 0, 0, 0, 1),#D
+                  nrow = n.s, ncol = n.s, byrow = T,
+                  dimnames = list(v.n, v.n))
+
+  }else{
 
   # create the transition matrix for each model cycle
     m.P <- matrix(c(
@@ -1041,12 +1081,10 @@ SEVR.rem <- min((p.SEVR_H1*p.H1_AC + p.SEVR_H1*(1-p.H1_AC)+p.H0C_D[i-1]),1)
     
     # print(i-1)
     # print(p.H0C_D[i-1])
-    m.TR[i, ] <- t(m.TR[i - 1, ]) %*% m.P
+  
+  }
+      m.TR[i, ] <- t(m.TR[i - 1, ]) %*% m.P
     # calculate the proportion of the cohort in each state at time t
-    
-    #Asthma-related death vector
-    v.AR_D[i,] <- (m.TR[i,ncol(m.TR)] - m.TR[i-1,ncol(m.TR)]) * (p.SCS_D[i] + p.ED_D[i] + p.Hosp_D[i]/(p.H0C_D[i]*8)) #proportion dead, dying from asthma
-    
     
     
   } # close the loop for the individuals 
@@ -1078,7 +1116,7 @@ SEVR.rem <- min((p.SEVR_H1*p.H1_AC + p.SEVR_H1*(1-p.H1_AC)+p.H0C_D[i-1]),1)
 
 }
  
-}
+
 
 tc <-( m.TR %*% v.c)  # calculate the costs
 te <-( m.TR %*% v.u ) # calculate the QALYs
@@ -1098,12 +1136,12 @@ te_hat <- t(te) %*% v.dwe  # total (discounted) QALY
   Hospoutcome <- sum(m.TR_temp$HOSP)
   
   SEVoutcome <- sum(m.TR_temp$SCS + m.TR_temp$ED + m.TR_temp$HOSP)
-  ARDoutcome <- sum(v.AR_D)
+
 
   if(res==TRUE){
 
 results <- list(m.TR = m.TR, tc_hat = tc_hat, te_hat = te_hat, tc=tc, te=te, v.dwc=v.dwc, v.dwe=v.dwe, vc=v.c,
-                controlled = cont, uncontrolled = UC, severe_exac = SEVoutcome, asthma_death = ARDoutcome) # store the results from the simulation in a list 
+                controlled = cont, uncontrolled = UC, severe_exac = SEVoutcome) # store the results from the simulation in a list 
 
 
 return(results)  # return the results
@@ -1131,9 +1169,10 @@ return(results)  # return the results
 ### Wrapper <- probablistic function
   f_wrapper <- function(fxn=f_gen_base(),
                         n_sim = 1000,
-                        n.t = 52*77,
+                        n.t = 4006, #77 years and 1 week
                         d.c = (0.03/52),
-                        trt=FALSE){
+                        trt=FALSE,
+                        res=F){
     
     require(readr)
     require(tidyverse)
@@ -1425,8 +1464,8 @@ dsa_setup <- function(df,title){
 ```
 ```{r, microsimulation}
 # Model input
-n.i   <- 1000               # number of simulated individuals
-n.t   <- 30              # time horizon
+n.i   <- 100000              # number of simulated individuals
+n.t   <- 4006             # time horizon
 v.n   <- c("H0C","H0NC", #H0 no hcp mgt
                "H1C", "H1NC", #H1 HCP MGT
                "SCS","ED","Hosp", "SEVR", #SEV exacerbation
@@ -1438,13 +1477,231 @@ v.Trt <- c("No OTC",
                "Primatene", 
                "Symbicort")       # store the strategy names
 
-mortality <- read_csv("mortality.csv")
-params <- f_gen_base()
-list2env(as.list(params), envir=globalenv())
 
+# efficient implementation of the rMultinom() function of the Hmisc package #### 
+samplev <- function (probs, m) {
+  d <- dim(probs)
+  n <- d[1]
+  k <- d[2]
+  lev <- dimnames(probs)[[2]]
+  if (!length(lev)) 
+    lev <- 1:k
+  ran <- matrix(lev[1], ncol = m, nrow = n)
+  U <- t(probs)
+  for(i in 2:k) {
+    U[i, ] <- U[i, ] + U[i - 1, ]
+  }
+  if (any((U[k, ] - 1) > 1e-05))
+    stop("error in multinom: probabilities do not sum to 1")
+  
+  for (j in 1:m) {
+    un <- rep(runif(n), rep(k, n))
+    ran[, j] <- lev[1 + colSums(un > U)]
+  }
+  ran
+}
+f_gen_base <- function(n_sim = 1){
+  
+  require(truncnorm)  
+  
+### Asthma Control Probability ### (proportion: mean % of weeks with well controlled asthma)l
+  p.H0_AC <- p.PRIM_AC <-  0.311
+  p.SYM_AC <- 0.344
+  p.H1_AC <- 0.444
+  
+### OTHER ### 
+  #H0 entering H1
+  p.H0_H1 <- 0
+  
+  #H1 Adherence
+  pAnn.H1_H0  <- (1-0.79)                             # probability of non-adherence to HCP management
+  p.H1_H0  <- 1 - (1-pAnn.H1_H0)^(1/52)
 
-
+  #SEVR -> H1 (Recovery) - mean of 4 weeks
+  wk.SEVR_H1 <- 4
+  r.SEVR_H1 <- 1/wk.SEVR_H1                   #weekly rate of 1 event (event being leaving SEVR state)
+  p.SEVR_H1 <- 1-exp(-r.SEVR_H1)
+  
+### SEV (Severe Exacerbation) ###
+  p.SCS_H0 <- p.ED_H0 <-p.Hosp_H0 <- 0 #Assumption that following severe exacerbation patient enters H1
+  RR.NC <- 1.201 #RATE ratio of exacerbation for not controlled asthma
+  
+  #Exacerbation proportion (SCS, ED, HOSP)
+  prop.H0_SEV <- prop.PRIM_SEV <- c(0.776,0.130,0.094)
+  prop.SYM_SEV <- c(0.819,0.102,0.079)
+  prop.H1_SEV <- c(0.824,0.098,0.078)
+  
+  #Cumulative rate from SYGMA trials
+  r.H0_SEVtot <- 0.20 #syg1
+  r.SYM_SEVtot <- 0.11 #syg2
+  r.H1_SEVtot <- 0.09 #syg1
+  
+    #Rate of exacerbation by control group
+    #controlled (C)
+    r.H0C_SEV <- r.H0_SEVtot/(p.H0_AC + RR.NC - RR.NC*p.H0_AC) #yaghoubi et al.2020
+    r.SYMC_SEV <- r.SYM_SEVtot/(p.SYM_AC + RR.NC - RR.NC*p.SYM_AC) #yaghoubi et al.2020
+    r.H1C_SEV <- r.H1_SEVtot/(p.H1_AC + RR.NC - RR.NC*p.H1_AC) #yaghoubi et al.2020
     
+    #Not controlled (NC)
+    r.H0NC_SEV <- r.H0C_SEV * RR.NC
+    r.SYMNC_SEV <- r.SYMC_SEV * RR.NC
+    r.H1NC_SEV <- r.H1C_SEV * RR.NC
+
+ ## Transition probabilities for Severe exacerbation #
+      #Severe Exacerbation Rates * Exacerbation Proportion
+  
+      #controlled (C)
+        p.H0C_SCS <- (1-exp(-r.H0C_SEV/52)) * prop.H0_SEV[1] # weekly probability of severe exacerbation with no OTC or primatene OTC prn
+        p.H0C_ED <- (1-exp(-r.H0C_SEV/52)) * prop.H0_SEV[2]
+        p.H0C_Hosp <- (1-exp(-r.H0C_SEV/52)) * prop.H0_SEV[3]
+        
+        p.SYMC_SCS <- (1-exp(-r.SYMC_SEV/52)) * prop.SYM_SEV[1]	# weekly rate of severe exacerbation with symbicort PRN
+        p.SYMC_ED <- (1-exp(-r.SYMC_SEV/52)) * prop.SYM_SEV[2]
+        p.SYMC_Hosp <- (1-exp(-r.SYMC_SEV/52)) * prop.SYM_SEV[3]
+        
+        p.H1C_SCS <- (1-exp(-r.H1C_SEV/52)) * prop.H1_SEV[1]	# weekly rate of severe exacerbation with HCP management (low dose ICS + SABA)
+        p.H1C_ED <- (1-exp(-r.H1C_SEV/52)) * prop.H1_SEV[2]
+        p.H1C_Hosp <- (1-exp(-r.H1C_SEV/52)) * prop.H1_SEV[3]
+      
+      #Not controlled (NC)
+        p.H0NC_SCS <- (1-exp(-r.H0NC_SEV/52)) * prop.H0_SEV[1] # weekly probability of severe exacerbation with no OTC or primatene OTC prn
+        p.H0NC_ED <- (1-exp(-r.H0NC_SEV/52)) * prop.H0_SEV[2]
+        p.H0NC_Hosp <- (1-exp(-r.H0NC_SEV/52)) * prop.H0_SEV[3]
+        
+        p.SYMNC_SCS <- (1-exp(-r.SYMNC_SEV/52)) * prop.SYM_SEV[1]	# weekly rate of severe exacerbation with symbicort PRN
+        p.SYMNC_ED <- (1-exp(-r.SYMNC_SEV/52)) * prop.SYM_SEV[2]
+        p.SYMNC_Hosp <- (1-exp(-r.SYMNC_SEV/52)) * prop.SYM_SEV[3]
+        
+        p.H1NC_SCS <- (1-exp(-r.H1NC_SEV/52)) * prop.H1_SEV[1]	# weekly rate of severe exacerbation with HCP management (low dose ICS + SABA)
+        p.H1NC_ED <- (1-exp(-r.H1NC_SEV/52)) * prop.H1_SEV[2]
+        p.H1NC_Hosp <- (1-exp(-r.H1NC_SEV/52)) * prop.H1_SEV[3]
+        
+### Mortality parameters built in markov model ###
+        
+### Cost and utility inputs ###
+  ## Direct Medical costs (per week)
+  c.HCP     <- 53               # cost of HCP management
+  c.AU      <- 15              # cost of uncontrolled asthma week
+  c.SCS     <- 163               # cost of being in SCS 
+  c.ED      <- 744               # cost of being in ED
+  c.Hosp    <- 12398               # cost of being in HOSP
+  
+  ## Drug acquisition cost (per DAY) * 7 
+  c.PRIM     <- 29.78*(0.52/160) * 7               # cost of primatene
+  c.SYM      <- 311.49*(0.52/120) * 7            # cost of symbicort
+  c.ICS      <- 326.28*(2/120) * 7               # cost of ICS
+  c.SABA     <- 54.42*(0.49/200) * 7             # cost of SABA
+  c.ICS_SABA <- c.ICS + c.SABA
+  
+  ## Indirect costs 
+  c.timeHCP  <- 3.03 # HCP management time/week*Assuming 240 total minutes of 4 PCP visits per year, 20 min travel time, 40min wait, median wage $1037 in 2022
+  c.prodAU   <- 132  # cost of productivity loss due to asthma not controlled days per week*
+  
+  #Productivity loss due to severe exacerbation ** Assuming do not go to work for 2,4,7 days
+  c.prodSCS  <- 296 # productive lose due to severe exacerbation.
+  c.prodED <- 593
+  c.prodHosp <- 1037
+  
+  ## Utility
+  du.AU   <-  -0.07/52                # disutility of asthma uncontrolled week
+  du.SCS  <-  -0.10/52               # disutility of systemic corticosteroid use
+  du.ED   <-  -0.15/52                 # disutility of emergency department
+  du.Hosp <-  -0.20/52                 # disutility of hospitalization
+  
+  u.H0 <- 0.87/52          # utility of non-exacerbation
+  u.H1 <- u.H0
+  u.SCS <- u.H0 + du.SCS     # utility of SCS
+  u.ED  <- u.H0 + du.ED        # utility of emergency deparment 
+  u.Hosp<- u.H0 + du.Hosp   # utility of hospitalization
+
+################################################################################################################################
+### Parameter dataframe ###
+df_psa <- data.frame(
+    ## Asthma Control Probability (proportion: mean % of weeks with well controlled asthma)l
+      p.H0_AC,
+      p.PRIM_AC,
+      p.SYM_AC,
+      p.H1_AC,
+      
+    ## Transition probabilities #
+      #controlled (C)
+      p.H0C_SCS,
+      p.H0C_ED,
+      p.H0C_Hosp,
+      
+      p.SYMC_SCS,
+      p.SYMC_ED,
+      p.SYMC_Hosp,
+      
+      p.H1C_SCS,
+      p.H1C_ED,
+      p.H1C_Hosp,
+      
+      #Not controlled (NC)
+      p.H0NC_SCS,
+      p.H0NC_ED,
+      p.H0NC_Hosp,
+      
+      p.SYMNC_SCS,
+      p.SYMNC_ED,
+      p.SYMNC_Hosp,
+      
+      p.H1NC_SCS,
+      p.H1NC_ED,
+      p.H1NC_Hosp,
+    
+      #SEVR -> H1
+      p.SEVR_H1, #Weekly probability of exiting SEVR
+    
+      #H0
+      p.H0_H1,
+    
+      #H1
+      p.H1_H0,
+    
+    ### Cost and utility inputs ###
+      ## Direct Medical costs (per week)
+      c.HCP, 
+      c.AU,
+      c.SCS,
+      c.ED,
+      c.Hosp,
+      
+      ## Drug acquisition cost (per DAY) * 7 
+      c.PRIM,
+      c.SYM,
+      c.ICS,
+      c.SABA,
+      c.ICS_SABA,
+      
+      ## Indirect costs 
+      c.timeHCP,
+      c.prodAU,
+      
+      #Productivity loss due to severe exacerbation ** Assuming do not go to work for 2,4,7 days
+      c.prodSCS,
+      c.prodED,
+      c.prodHosp,
+      
+      ## Utility
+      du.AU,
+      du.SCS,
+      du.ED,
+      du.Hosp,
+      
+      u.H0,
+      u.H1,
+      u.SCS,
+      u.ED,
+      u.Hosp
+      
+  )
+  
+  v.du_exac  <- c(du.SCS, du.ED, du.Hosp)
+  v.u_exac  <- c(u.SCS, u.ED, u.Hosp)
+  return(df_psa)
+
+}
 
 MicroSim <- function(v.M_1, n.i, n.t, v.n, d.c, d.e, TR.out = TRUE, TS.out = TRUE, Trt = FALSE, seed = 1996) {
   # Arguments:  
@@ -1466,15 +1723,12 @@ MicroSim <- function(v.M_1, n.i, n.t, v.n, d.c, d.e, TR.out = TRUE, TS.out = TRU
   v.dwc <- 1 / (1 + d.c) ^ (0:(n.t-1))   # calculate the cost discount weight based on the discount rate d.c, minus 1 to exclude cycle 0 
   v.dwe <- 1 / (1 + d.e) ^ (0:(n.t-1))   # calculate the QALY discount weight based on the discount rate d.e, minus 1 to exclude cycle 0 
   
-  # create the matrix capturing the state name/costs/health outcomes for all individuals at each time point 
-  m.M <- m.C <- m.E <-  matrix(nrow = n.i, ncol = n.t + 1, 
-                               dimnames = list(paste("ind", 1:n.i, sep = " "), 
-                                               paste("cycle", 0:n.t, sep = " ")))  
+  mortality <- read_csv("mortality.csv") #running in mortality sheet
+  params <- f_gen_base() #running in parameter sheet
+  # list2env(as.list(params), envir=globalenv()) #parameter to environment
   
-  m.M[,1:2] <- v.M_1                     # indicate the initial health state
-
-#Mortality: asthma fatality and baseline mortality (not affected by PSA)
-  #Asthma Fatality (baseline)
+  # Mortality: asthma fatality and baseline mortality (not affected by PSA)
+  # Asthma Fatality (baseline)
     pAnn.SCS_D <- mortality$p.SCS_AF
     pAnn.ED_D <- mortality$p.ED_AF
     pAnn.Hosp_D <- mortality$p.HOSP_AF
@@ -1492,19 +1746,18 @@ MicroSim <- function(v.M_1, n.i, n.t, v.n, d.c, d.e, TR.out = TRUE, TS.out = TRU
     p.ED_D_PRIM <- 1 - (1-pAnn.ED_D_PRIM)^(1/52)
     p.Hosp_D_PRIM <- 1 - (1-pAnn.Hosp_D_PRIM)^(1/52)
     
-  #H0 Baseline Mortality
+  # H0 Baseline Mortality
     pAnn.H0C_D <- pAnn.H0NC_D <- mortality$b_mortality   # probability of death from no HCP management
-    p.H0C_D <- p.H0NC_D  <- p.H1C_D <- p.H1NC_D <-  1 - (1-pAnn.H0C_D)^(1/52)       
+    p.H0C_D <- p.H0NC_D  <- p.H1C_D <- p.H1NC_D <-  1 - (1-pAnn.H0C_D)^(1/52)     
     
-
-#### Probability function
+with(as.list(params),{    
+  if(Trt == F){
 # The Probs function that updates the transition probabilities of every cycle is shown below.
-
 Probs <- function(M_it) { 
   # M_it:    health state occupied by individual i at cycle t (character variable)
   
-  v.p.it <- rep(NA, n.s)     # create vector of state transition probabilities
-  names(v.p.it) <- v.n       # name the vector
+  m.p.it <- matrix(NA, n.s, n.i)     # create vector of state transition probabilities
+  rownames(m.p.it) <- v.n            # assign names to the vector
   
   
   #Remaining health states
@@ -1518,25 +1771,36 @@ Probs <- function(M_it) {
   Hosp.rem <- min((p.Hosp_D[t-1]+p.H0C_D[t-1]),1)
   SEVR.rem <- min((p.SEVR_H1*p.H1_AC + p.SEVR_H1*(1-p.H1_AC)+p.H0C_D[t-1]),1)
 
+  if(p.H0C_D[t-1]==1){
   
-  # update v.p.it with the appropriate probabilities 
-  v.p.it[M_it == "H0C"]  <- c((1-H0C.rem)*p.H0_AC,(1-H0C.rem)*(1-p.H0_AC), p.H0_H1*p.H1_AC, p.H0_H1*(1-p.H1_AC), p.H0C_SCS, p.H0C_ED, p.H0C_Hosp, 0, p.H0C_D[t-1])
-  v.p.it[M_it == "H0NC"]  <- c((1-H0NC.rem)*p.H0_AC,(1-H0NC.rem)*(1-p.H0_AC), p.H0_H1*p.H1_AC, p.H0_H1*(1-p.H1_AC), p.H0NC_SCS, p.H0NC_ED, p.H0NC_Hosp, 0, p.H0NC_D[t-1])
-  v.p.it[M_it == "H1C"]  <- c(p.H1_H0*p.H0_AC,p.H1_H0*(1-p.H0_AC),(1 - H1C.rem)*p.H1_AC,(1 - H1C.rem)*(1-p.H1_AC),p.H1C_SCS,p.H1C_ED,p.H1C_Hosp,0, p.H1C_D[t-1])
-  v.p.it[M_it == "H1NC"]  <- c(p.H1_H0*p.H0_AC,p.H1_H0*(1-p.H0_AC),(1 - H1NC.rem)*p.H1_AC,(1 - H1NC.rem)*(1-p.H1_AC),p.H1NC_SCS,p.H1NC_ED,p.H1NC_Hosp,0, p.H1NC_D[t-1])
-  v.p.it[M_it == "SCS"] <- c(0, 0, 0, 0, 0, 0, 0,(1-SCS.rem), min(p.SCS_D[t-1]+p.H0C_D[t-1],1))
-  v.p.it[M_it == "ED"] <- c(0, 0, 0, 0, 0, 0, 0,(1-ED.rem), min(p.ED_D[t-1]+p.H0C_D[t-1],1))
-  v.p.it[M_it == "Hosp"] <- c(0, 0, 0, 0, 0, 0, 0,(1-Hosp.rem), min(p.Hosp_D[t-1]+p.H0C_D[t-1],1))
-  v.p.it[M_it == "SEVR"] <- c(0, 0, p.SEVR_H1*p.H1_AC, p.SEVR_H1*(1-p.H1_AC), 0, 0, 0, 1-SEVR.rem, p.H0C_D[t-1])
-  v.p.it[M_it == "D"]  <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
-  ifelse(round(sum(v.p.it), digits=10)==1, return(v.p.it), print("Probabilities do not sum to 1")) # return the transition probabilities or produce an error
+  m.p.it[,M_it == "H0C"]  <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  m.p.it[,M_it == "H0NC"]  <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  m.p.it[,M_it == "H1C"]  <-c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  m.p.it[,M_it == "H1NC"]  <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  m.p.it[,M_it == "SCS"] <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  m.p.it[,M_it == "ED"] <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  m.p.it[,M_it == "Hosp"] <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  m.p.it[,M_it == "SEVR"] <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  m.p.it[,M_it == "D"]  <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+    
+  }else{
+  
+  # update m.p.it with the appropriate probabilities 
+  m.p.it[,M_it == "H0C"]  <- c((1-H0C.rem)*p.H0_AC,(1-H0C.rem)*(1-p.H0_AC), p.H0_H1*p.H1_AC, p.H0_H1*(1-p.H1_AC), p.H0C_SCS, p.H0C_ED, p.H0C_Hosp, 0, p.H0C_D[t-1])
+  m.p.it[,M_it == "H0NC"]  <- c((1-H0NC.rem)*p.H0_AC,(1-H0NC.rem)*(1-p.H0_AC), p.H0_H1*p.H1_AC, p.H0_H1*(1-p.H1_AC), p.H0NC_SCS, p.H0NC_ED, p.H0NC_Hosp, 0, p.H0NC_D[t-1])
+  m.p.it[,M_it == "H1C"]  <- c(p.H1_H0*p.H0_AC,p.H1_H0*(1-p.H0_AC),(1 - H1C.rem)*p.H1_AC,(1 - H1C.rem)*(1-p.H1_AC),p.H1C_SCS,p.H1C_ED,p.H1C_Hosp,0, p.H1C_D[t-1])
+  m.p.it[,M_it == "H1NC"]  <- c(p.H1_H0*p.H0_AC,p.H1_H0*(1-p.H0_AC),(1 - H1NC.rem)*p.H1_AC,(1 - H1NC.rem)*(1-p.H1_AC),p.H1NC_SCS,p.H1NC_ED,p.H1NC_Hosp,0, p.H1NC_D[t-1])
+  m.p.it[,M_it == "SCS"] <- c(0, 0, 0, 0, 0, 0, 0,(1-SCS.rem), min(p.SCS_D[t-1]+p.H0C_D[t-1],1))
+  m.p.it[,M_it == "ED"] <- c(0, 0, 0, 0, 0, 0, 0,(1-ED.rem), min(p.ED_D[t-1]+p.H0C_D[t-1],1))
+  m.p.it[,M_it == "Hosp"] <- c(0, 0, 0, 0, 0, 0, 0,(1-Hosp.rem), min(p.Hosp_D[t-1]+p.H0C_D[t-1],1))
+  m.p.it[,M_it == "SEVR"] <- c(0, 0, p.SEVR_H1*p.H1_AC, p.SEVR_H1*(1-p.H1_AC), 0, 0, 0, 1-SEVR.rem, p.H0C_D[t-1])
+  m.p.it[,M_it == "D"]  <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  }
+  ifelse(round(colSums(m.p.it), digits=10)==1, return(t(m.p.it)), print("Probabilities do not sum to 1")) # return the transition probabilities or produce an error
 }       
 
-
-### Costs function
 # The Costs function estimates the costs at every cycle.
-
-Costs <- function (M_it, Trt = FALSE) {
+Costs <- function (M_it) {
   
   # M_it: health state occupied by individual i at cycle t (character variable)
   
@@ -1554,10 +1818,8 @@ Costs <- function (M_it, Trt = FALSE) {
   return(c.it)        		                   # return the costs
 }
 
-### Health outcome function 
 # The Effs function to update the utilities at every cycle.
-
-Effs <- function (M_it, Trt = FALSE, cl = 1) {
+Effs <- function (M_it, cl = 1) {
   # M_it: health state occupied by individual i at cycle t (character variable)
   # Trt:  is the individual treated? (default is FALSE) 
   # cl:   cycle length (default is 1)
@@ -1576,26 +1838,205 @@ Effs <- function (M_it, Trt = FALSE, cl = 1) {
   QALYs <-  u.it * cl            # calculate the QALYs during cycle t
   return(QALYs)                  # return the QALYs
 }
+}  
+      
+  if(Trt=="primatene"){
+  # The Probs function that updates the transition probabilities of every cycle is shown below.
+  Probs <- function(M_it) { 
+  # M_it:    health state occupied by individual i at cycle t (character variable)
   
-  for (i in 1:n.i) {
-    set.seed(seed + i)                  # set the seed for every individual for the random number generator
-    m.C[i, 2] <- Costs(m.M[i, 2], Trt)  # estimate costs per individual for the initial health state conditional on treatment
-    m.E[i, 2] <- Effs (m.M[i, 2], Trt)  # estimate QALYs per individual for the initial health state conditional on treatment
+  m.p.it <- matrix(NA, n.s, n.i)     # create vector of state transition probabilities
+  rownames(m.p.it) <- v.n            # assign names to the vector
+  
+  
+  #Remaining health states
+  H0C.rem <- min((p.H0_H1*p.H1_AC+p.H0_H1*(1-p.H1_AC)+p.H0C_SCS+p.H0C_ED+p.H0C_Hosp+p.H0C_D[t-1]),1)
+  H0NC.rem <- min((p.H0_H1*p.H1_AC+p.H0_H1*(1-p.H1_AC)+p.H0NC_SCS+p.H0NC_ED+p.H0NC_Hosp+p.H0NC_D[t-1]),1)
+  H1C.rem <- min(((p.H1_H0*p.H0_AC)+(p.H1_H0*(1-p.H0_AC))+p.H1C_SCS+p.H1C_ED+p.H1C_Hosp+p.H1C_D[t-1]),1)
+  H1NC.rem <- min(((p.H1_H0*p.H0_AC)+(p.H1_H0*(1-p.H0_AC))+p.H1NC_SCS+p.H1NC_ED+p.H1NC_Hosp+p.H1C_D[t-1]),1)
+  
+  SCS.rem <- min((p.SCS_D_PRIM[t-1]+p.H0C_D[t-1]),1)
+  ED.rem <- min((p.ED_D_PRIM[t-1]+p.H0C_D[t-1]),1)
+  Hosp.rem <-min((p.Hosp_D_PRIM[t-1]+p.H0C_D[t-1]),1)
+  SEVR.rem <- min((p.SEVR_H1*p.H1_AC + p.SEVR_H1*(1-p.H1_AC)+p.H0C_D[t-1]),1)
+  
+   if(p.H0C_D[t-1]==1){
+  
+  m.p.it[,M_it == "H0C"]  <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  m.p.it[,M_it == "H0NC"]  <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  m.p.it[,M_it == "H1C"]  <-c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  m.p.it[,M_it == "H1NC"]  <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  m.p.it[,M_it == "SCS"] <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  m.p.it[,M_it == "ED"] <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  m.p.it[,M_it == "Hosp"] <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  m.p.it[,M_it == "SEVR"] <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  m.p.it[,M_it == "D"]  <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
     
-    for (t in (2:n.t)) { #2 to sync up with markov model and allow for t-1, cycle 0 will be removed
-      
-      v.p <- Probs(m.M[i, t])           # calculate the transition probabilities at cycle t 
-      
-      m.M[i, t + 1] <- sample(v.n, prob = v.p, size = 1)  # sample the next health state and store that state in matrix m.M 
-      m.C[i, t + 1] <- Costs(m.M[i, t + 1], Trt)   # estimate costs per individual during cycle t + 1 conditional on treatment
-      m.E[i, t + 1] <- Effs( m.M[i, t + 1], Trt)   # estimate QALYs per individual during cycle t + 1 conditional on treatment
-      
-    } # close the loop for the time points 
-    if(i/100 == round(i/100,0)) {          # display the progress of the simulation
-      cat('\r', paste(i/n.i * 100, "% done", sep = " "))
-    }
-  } # close the loop for the individuals 
+  }else{
+  # update m.p.it with the appropriate probabilities 
+  m.p.it[,M_it == "H0C"]  <- c((1-H0C.rem)*p.H0_AC,(1-H0C.rem)*(1-p.H0_AC), p.H0_H1*p.H1_AC, p.H0_H1*(1-p.H1_AC), p.H0C_SCS, p.H0C_ED, p.H0C_Hosp, 0, p.H0C_D[t-1])
+  m.p.it[,M_it == "H0NC"]  <- c((1-H0NC.rem)*p.H0_AC,(1-H0NC.rem)*(1-p.H0_AC), p.H0_H1*p.H1_AC, p.H0_H1*(1-p.H1_AC), p.H0NC_SCS, p.H0NC_ED, p.H0NC_Hosp, 0, p.H0NC_D[t-1])
+  m.p.it[,M_it == "H1C"]  <- c(p.H1_H0*p.H0_AC,p.H1_H0*(1-p.H0_AC),(1 - H1C.rem)*p.H1_AC,(1 - H1C.rem)*(1-p.H1_AC),p.H1C_SCS,p.H1C_ED,p.H1C_Hosp, 0, p.H1C_D[t-1])
+  m.p.it[,M_it == "H1NC"]  <- c(p.H1_H0*p.H0_AC,p.H1_H0*(1-p.H0_AC),(1 - H1NC.rem)*p.H1_AC,(1 - H1NC.rem)*(1-p.H1_AC),p.H1NC_SCS,p.H1NC_ED,p.H1NC_Hosp, 0, p.H1NC_D[t-1])
+  m.p.it[,M_it == "SCS"] <- c(0, 0, 0, 0, 0, 0, 0,(1-SCS.rem), min(p.SCS_D_PRIM[t-1]+p.H0C_D[t-1],1))
+  m.p.it[,M_it == "ED"] <- c(0, 0, 0, 0, 0, 0, 0,(1-ED.rem), min(p.ED_D_PRIM[t-1]+p.H0C_D[t-1],1))
+  m.p.it[,M_it == "Hosp"] <- c(0, 0, 0, 0, 0, 0, 0,(1-Hosp.rem), min(p.Hosp_D_PRIM[t-1]+p.H0C_D[t-1],1))
+  m.p.it[,M_it == "SEVR"] <- c(0, 0, p.SEVR_H1*p.H1_AC, p.SEVR_H1*(1-p.H1_AC), 0, 0, 0, 1-SEVR.rem, p.H0C_D[t-1])
+  m.p.it[,M_it == "D"]  <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  }
+  ifelse(round(colSums(m.p.it), digits=10)==1, return(t(m.p.it)), print("Probabilities do not sum to 1")) # return the transition probabilities or produce an error
+}    
+  # The Costs function estimates the costs at every cycle.
+  Costs <- function (M_it) {
+    
+    # M_it: health state occupied by individual i at cycle t (character variable)
+    
+    c.it <- 0                                  # by default the cost for everyone is zero 
+    c.it[M_it == "H0C"]  <- c.PRIM
+    c.it[M_it == "H0NC"]  <-  c.PRIM + c.AU + c.prodAU
+    c.it[M_it == "H1C"]  <- c.ICS_SABA + c.HCP + c.timeHCP
+    c.it[M_it == "H1NC"]  <- c.ICS_SABA + c.HCP + c.timeHCP + c.AU + c.prodAU
+    c.it[M_it == "SCS"]  <- c.SCS + c.prodSCS
+    c.it[M_it == "ED"]  <-  c.ED + c.prodED
+    c.it[M_it == "Hosp"]  <- c.Hosp + c.prodHosp
+    c.it[M_it == "SEVR"]  <- c.ICS_SABA + c.HCP + c.timeHCP + c.AU + c.prodAU
+    c.it[M_it == "D"]  <- 0
+    
+    return(c.it)        		                   # return the costs
+  }
   
+  # The Effs function to update the utilities at every cycle.
+  Effs <- function (M_it, cl = 1) {
+    # M_it: health state occupied by individual i at cycle t (character variable)
+    # Trt:  is the individual treated? (default is FALSE) 
+    # cl:   cycle length (default is 1)
+    
+    u.it <- 0                      # by default the utility for everyone is zero
+    u.it[M_it == "H0C"]  <- u.H0    
+    u.it[M_it == "H0NC"]  <- u.H0 + du.AU 
+    u.it[M_it == "H1C"]  <- u.H1    
+    u.it[M_it == "H1NC"]  <- u.H1 + du.AU    
+    u.it[M_it == "SCS"]  <- u.SCS      
+    u.it[M_it == "ED"]  <- u.ED      
+    u.it[M_it == "Hosp"]  <- u.Hosp      
+    u.it[M_it == "SEVR"]  <- u.H1 + du.AU     
+    u.it[M_it == "D"]  <- 0     
+    
+    QALYs <-  u.it * cl            # calculate the QALYs during cycle t
+    return(QALYs)                  # return the QALYs
+  }
+  }
+    
+  if(Trt == "symbicort"){
+  # The Probs function that updates the transition probabilities of every cycle is shown below.
+  Probs <- function(M_it) { 
+    # M_it:    health state occupied by individual i at cycle t (character variable)
+    
+    m.p.it <- matrix(NA, n.s, n.i)     # create vector of state transition probabilities
+    rownames(m.p.it) <- v.n            # assign names to the vector
+    
+    
+    #Remaining health states
+    H0C.rem <- min((p.H0_H1*p.H1_AC+p.H0_H1*(1-p.H1_AC)+p.SYMC_SCS+p.SYMC_ED+p.SYMC_Hosp+p.H0C_D[t-1]),1)
+    H0NC.rem <- min((p.H0_H1*p.H1_AC+p.H0_H1*(1-p.H1_AC)+p.SYMNC_SCS+p.SYMNC_ED+p.SYMNC_Hosp+p.H0NC_D[t-1]),1)
+    H1C.rem <- min(((p.H1_H0*p.H0_AC)+(p.H1_H0*(1-p.H0_AC))+p.H1C_SCS+p.H1C_ED+p.H1C_Hosp+p.H1C_D[t-1]),1)
+    H1NC.rem <- min(((p.H1_H0*p.H0_AC)+(p.H1_H0*(1-p.H0_AC))+p.H1NC_SCS+p.H1NC_ED+p.H1NC_Hosp+p.H1C_D[t-1]),1)
+    
+    SCS.rem <- min((p.SCS_D[t-1]+p.H0C_D[t-1]),1)
+    ED.rem <- min((p.ED_D[t-1]+p.H0C_D[t-1]),1)
+    Hosp.rem <- min((p.Hosp_D[t-1]+p.H0C_D[t-1]),1)
+    SEVR.rem <- min((p.SEVR_H1*p.H1_AC + p.SEVR_H1*(1-p.H1_AC)+p.H0C_D[t-1]),1)
+    
+    if(p.H0C_D[t-1]==1){
+  
+  m.p.it[,M_it == "H0C"]  <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  m.p.it[,M_it == "H0NC"]  <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  m.p.it[,M_it == "H1C"]  <-c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  m.p.it[,M_it == "H1NC"]  <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  m.p.it[,M_it == "SCS"] <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  m.p.it[,M_it == "ED"] <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  m.p.it[,M_it == "Hosp"] <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  m.p.it[,M_it == "SEVR"] <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  m.p.it[,M_it == "D"]  <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+    
+  }else{
+    # update m.p.it with the appropriate probabilities 
+    m.p.it[,M_it == "H0C"]  <- c((1-H0C.rem)*p.SYM_AC,(1-H0C.rem)*(1-p.SYM_AC), p.H0_H1*p.H1_AC, p.H0_H1*(1-p.H1_AC), p.SYMC_SCS, p.SYMC_ED, p.SYMC_Hosp, 0, p.H0C_D[t-1])
+    m.p.it[,M_it == "H0NC"]  <- c((1-H0NC.rem)*p.SYM_AC,(1-H0NC.rem)*(1-p.SYM_AC), p.H0_H1*p.H1_AC, p.H0_H1*(1-p.H1_AC), p.SYMNC_SCS, p.SYMNC_ED, p.SYMNC_Hosp, 0, p.H0NC_D[t-1])
+    m.p.it[,M_it == "H1C"]  <- c(p.H1_H0*p.SYM_AC,p.H1_H0*(1-p.SYM_AC),(1 - H1C.rem)*p.H1_AC,(1 - H1C.rem)*(1-p.H1_AC),p.H1C_SCS,p.H1C_ED,p.H1C_Hosp, 0, p.H1C_D[t-1])
+    m.p.it[,M_it == "H1NC"]  <- c(p.H1_H0*p.SYM_AC,p.H1_H0*(1-p.SYM_AC),(1 - H1NC.rem)*p.H1_AC,(1 - H1NC.rem)*(1-p.H1_AC),p.H1NC_SCS,p.H1NC_ED,p.H1NC_Hosp, 0, p.H1NC_D[t-1])
+    m.p.it[,M_it == "SCS"] <- c(0, 0, 0, 0, 0, 0, 0,(1-SCS.rem), min(p.SCS_D[t-1]+p.H0C_D[t-1],1))
+    m.p.it[,M_it == "ED"] <- c(0, 0, 0, 0, 0, 0, 0,(1-ED.rem), min(p.ED_D[t-1]+p.H0C_D[t-1],1))
+    m.p.it[,M_it == "Hosp"] <- c(0, 0, 0, 0, 0, 0, 0,(1-Hosp.rem), min(p.Hosp_D[t-1]+p.H0C_D[t-1],1))
+    m.p.it[,M_it == "SEVR"] <- c(0, 0, p.SEVR_H1*p.H1_AC, p.SEVR_H1*(1-p.H1_AC), 0, 0, 0, 1-SEVR.rem, p.H0C_D[t-1])
+    m.p.it[,M_it == "D"]  <- c(0, 0, 0, 0, 0, 0, 0, 0, 1)
+  }
+    ifelse(round(colSums(m.p.it), digits=10)==1, return(t(m.p.it)), print("Probabilities do not sum to 1")) # return the transition probabilities or produce an error
+  }       
+  
+  # The Costs function estimates the costs at every cycle.
+  Costs <- function (M_it) {
+    
+    # M_it: health state occupied by individual i at cycle t (character variable)
+    
+    c.it <- 0                                  # by default the cost for everyone is zero 
+    c.it[M_it == "H0C"]  <- c.SYM
+    c.it[M_it == "H0NC"]  <-  c.SYM + c.AU + c.prodAU
+    c.it[M_it == "H1C"]  <- c.ICS_SABA + c.HCP + c.timeHCP
+    c.it[M_it == "H1NC"]  <- c.ICS_SABA + c.HCP + c.timeHCP + c.AU + c.prodAU
+    c.it[M_it == "SCS"]  <- c.SCS + c.prodSCS
+    c.it[M_it == "ED"]  <-  c.ED + c.prodED
+    c.it[M_it == "Hosp"]  <- c.Hosp + c.prodHosp
+    c.it[M_it == "SEVR"]  <- c.ICS_SABA + c.HCP + c.timeHCP + c.AU + c.prodAU
+    c.it[M_it == "D"]  <- 0
+    
+    return(c.it)        		                   # return the costs
+  }
+  
+  # The Effs function to update the utilities at every cycle.
+  Effs <- function (M_it, cl = 1) {
+    # M_it: health state occupied by individual i at cycle t (character variable)
+    # Trt:  is the individual treated? (default is FALSE) 
+    # cl:   cycle length (default is 1)
+    
+    u.it <- 0                      # by default the utility for everyone is zero
+    u.it[M_it == "H0C"]  <- u.H0    
+    u.it[M_it == "H0NC"]  <- u.H0 + du.AU 
+    u.it[M_it == "H1C"]  <- u.H1    
+    u.it[M_it == "H1NC"]  <- u.H1 + du.AU    
+    u.it[M_it == "SCS"]  <- u.SCS      
+    u.it[M_it == "ED"]  <- u.ED      
+    u.it[M_it == "Hosp"]  <- u.Hosp      
+    u.it[M_it == "SEVR"]  <- u.H1 + du.AU     
+    u.it[M_it == "D"]  <- 0     
+    
+    QALYs <-  u.it * cl            # calculate the QALYs during cycle t
+    return(QALYs)                  # return the QALYs
+  }
+}  
+    
+  # create the matrix capturing the state name/costs/health outcomes for all individuals at each time point 
+  m.M <- m.C <- m.E <-  matrix(nrow = n.i, ncol = n.t + 1, 
+                               dimnames = list(paste("ind", 1:n.i, sep = " "), 
+                                               paste("cycle", 0:n.t, sep = " ")))  
+  
+  m.M[,1:2] <- v.M_1                     # indicate the initial health state
+
+  set.seed(seed)                  # set the seed for every individual for the random number generator
+  m.C[, 1:2] <- Costs(m.M[, 1:2])  # estimate costs per individual for the initial health state
+  m.E[, 1:2] <- Effs (m.M[, 1:2])  # estimate QALYs per individual for the initial health state
+  
+  for (t in 2:n.t) {
+    m.p <- Probs(m.M[, t])           # calculate the transition probabilities at cycle t 
+    
+    m.M[, t + 1] <- samplev( prob = m.p, m = 1)  # sample the next health state and store that state in matrix m.M 
+    m.C[, t + 1] <- Costs(m.M[, t + 1])   # estimate costs per individual during cycle t + 1 conditional on treatment
+    m.E[, t + 1] <- Effs( m.M[, t + 1])   # estimate QALYs per individual during cycle t + 1 conditional on treatment
+    cat('\r', paste(round(t/n.t * 100), "% done", sep = " "))       # display the progress of the simulation
+    
+  } # close the loop for the time points 
+    
+
   #removing cycle 0
   m.M <- m.M[,-1]
   m.C <- m.C[,-1]
@@ -1627,7 +2068,10 @@ Effs <- function (M_it, Trt = FALSE, cl = 1) {
   
   results <- list(m.M = m.M, m.C = m.C, m.E = m.E, tc = tc, te = te, tc_hat = tc_hat, te_hat = te_hat, TS = TS, TR = TR) # store the results from the simulation in a list  
   return(results)  # return the results
+  
+}) # end with function
 }  # end of the MicroSim function  
+
 
 
 
@@ -1696,12 +2140,26 @@ resw <- pivot_wider(res, names_from = trt,
         
     return(p)
     }
-    
-      CEA_plot(data = resw, x = resw$deltaSP_QALYs, y = resw$deltaSP_Costs, title = "SYMB")
-      CEA_plot(data = resw, x = resw$deltaNP_QALYs, y = resw$deltaNP_Costs, title = "noTrt")
-      CEA_plot(data = resw, x = resw$deltaSN_QALYs, y = resw$deltaSN_Costs, title = "SYMB")
+      
+sym_prim <- CEA_plot(data = resw, x = resw$deltaSP_QALYs, y = resw$deltaSP_Costs, xlab="Incremental QALY", ylab = "Incremental Cost")
+sym_noTrt <- CEA_plot(data = resw, x = resw$deltaSN_QALYs, y = resw$deltaSN_Costs, xlab="Incremental QALY", ylab = "Incremental Cost")
+noTrt_prim <- CEA_plot(data = resw, x = resw$deltaNP_QALYs, y = resw$deltaNP_Costs, xlab="Incremental QALY", ylab = "Incremental Cost")
 
-  #combined plot
+theme_set(theme_pubr())
+y <- ggarrange(sym_prim,sym_noTrt,noTrt_prim,
+               ncol=1,
+               nrow=3,
+               labels =c('A','B','C'))
+
+ggsave("CEA_plotv3.png", plot=y, 
+       path="C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Manuscript/Figures",
+       width= 7,
+       height= 11,
+       dpi = 1000)  
+
+
+
+#combined plot
      CEA_plot_JH <- function(res){
       
        #creating dataset
@@ -1772,30 +2230,43 @@ resw <- pivot_wider(res, names_from = trt,
   NP <- CEAC(costs=resw$deltaNP_Costs, qalys=resw$deltaNP_QALYs) #No Trt vs PRIM
   SN <- CEAC(costs=resw$deltaSN_Costs, qalys=resw$deltaSN_QALYs) #SYMB vs noTrt
 
-#Long dataframe for symb and primatene comparison to noTrt option
+#CEAC comparing bud-form to no OTc
  SP.prop <- SP[[2]]
  SP.prop$trt  <- "Budesonide-formoterol"
- NP.prop <- NP [[2]]
- NP.prop$trt <- "no OTC inhaler"
+ PS.prop <- NP [[2]]
+ PS.prop$prop <- 1-SP.prop$prop
+ PS.prop$trt <- "Inhaled epinephrine"
  
- prim_prop <- rbind(SP.prop,NP.prop) #df 
+ SP_prop <- rbind(SP.prop,PS.prop) 
 
-#Long dataframe for symb comparison to primatene and no Trt
+#CEAC comparing bud-form to no OTC
  SN.prop <- SN[[2]]
- SN.prop$trt  <- "Budesonide-formoterol vs. No OTC inhaler"
+ SN.prop$trt  <- "Budesonide-formoterol"
  
- SP2.prop <- SP[[2]]
- SP2.prop$trt  <- "Budesonide-formoterol vs Inhaled epinephrine"
+ NS.prop <- SP[[2]]
+ NS.prop$prop <- 1-SN.prop$prop
+ NS.prop$trt  <- "No OTC inhaler"
  
- symb_prop <- rbind(SN.prop, SP2.prop)
+ SN_prop <- rbind(SN.prop, NS.prop)
 
+ #CEAC comparing no OTC to inhaled epinephrine
+ NP.prop <- NP[[2]]
+ NP.prop$trt  <- "No OTC inhaler"
+ 
+ PN.prop <- NP[[2]]
+ PN.prop$trt  <- "Inhaled epinephrine"
+ PN.prop$prop <- 1-NP.prop$prop
+ 
+
+ 
+ NP_prop <- rbind(NP.prop, PN.prop)
   
 CEAC_plot <- function(df){
-  
+
    #Plotting 
      p <- ggplot(data = df,
            aes(x=WTP,y=prop, group = trt, colour = trt))+
-      geom_line(linetype="dashed", position=position_jitter(w=50000,h=0))+
+      geom_line()+#linetype="dashed", position=position_jitter(w=50000,h=0))+
       ylim(0,1)+
       labs(y="Proportion", x="Willingness-to-pay")+
       theme_bw() + theme(panel.border = element_blank(),
@@ -1804,14 +2275,27 @@ CEAC_plot <- function(df){
                          axis.line = element_line(colour = "black"),
                          legend.title = element_blank(),
                          legend.position = "top"
-                          )
+                          ) 
 
 return(p)     
 }
 
-CEAC_plot(prim_prop)
-CEAC_plot(symb_prop)
-  
+a<-CEAC_plot(SP_prop) + scale_colour_manual(values=c("Budesonide-formoterol"= "red", "Inhaled epinephrine"="blue"))
+b<-CEAC_plot(SN_prop) + scale_colour_manual(values=c("Budesonide-formoterol"= "red","No OTC inhaler"="orange"))
+c<-CEAC_plot(NP_prop) + scale_colour_manual(values=c("No OTC inhaler"="orange","Inhaled epinephrine"="blue"))
+
+
+y <- ggarrange(a,b,c,
+               ncol=1,
+               nrow=3,
+               labels =c('A','B',"C")) 
+
+
+ggsave("CEAC_plot2.png", plot=y,
+       path="C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Manuscript/Figures",
+       width= 7,
+       height= 11,
+       dpi = 1000)
       
   
 ```
@@ -1847,11 +2331,11 @@ tornado_plot <- function(df, wtp=100000){
   df$UL_Difference <- abs(df$Upper_Bound - df$Lower_Bound)
   base.value <- df$Lower_Bound[1] #basecase value: when H0 to H1 is 0
   
-  dsa_names<-c("Annual probability - Transitioning from no HCP to HCP (0%,20%)","Annual probability - Non-adherence to HCP (+/-20%) ",
-             "Annual rate of severe exacerbation - no treatment/inhaled epinephrine (+/-20%)","Annual rate of severe exacerbation - bud-form (+/-20%)", "Annual rate of severe exacerbation - HCP (+/-20%)",
-             "Cost - HCP management (+/-20%)","Cost - Asthma Uncontrolled Day (+/-20%)","Cost of severe exacerbation - SCS use (+/-20%) ","Cost of severe exacerbation - ED visit + SCS use (+/-20%)","Cost of severe exacerbation - Hospitalization (+/-20%)",
-             "Inhalations per day - inhaled epinephrine (+/-20%)","Inhalations per day - bud-form (+/-20%)","Inhalations per day - ICS (+/-20%)","Inhalations per day - inhaled SABA (+/-20%)",
-             "Disutility - Asthma Uncontrolled Day (+/-20%)","Disutility of severe exacerbation - SCS use (+/-20%)","Disutility of severe exacerbation - ED visit + SCS use (+/-20%)","Disutility of severe exacerbation - Hospitalization (+/-20%)","Utility - non-exacerbation (+/-20%)")
+  dsa_names<-c("Annual probability - Transitioning from no HCP to HCP (0%,20%)","Annual probability - Non-adherence to HCP (+/-20%)",
+             "Annual rate of severe exacerbation - No OTC inhaler/IE (+/-20%)","Annual rate of severe exacerbation - Bud-form (+/-20%)", "Annual rate of severe exacerbation - HCP (+/-20%)",
+             "Cost - HCP management (+/-20%)","Cost - Asthma not well-controlled day (+/-20%)","Cost of severe exacerbation - SCS use (+/-20%)","Cost of severe exacerbation - ED visit + SCS use (+/-20%)","Cost of severe exacerbation - Hospitalization (+/-20%)",
+             "Inhalations per day - IE (+/-20%)","Inhalations per day - Bud-form (+/-20%)","Inhalations per day - ICS (+/-20%)","Inhalations per day - SABA (+/-20%)",
+             "Disutility - Asthma not well-controlled day (+/-20%)","Disutility of severe exacerbation - SCS use (+/-20%)","Disutility of severe exacerbation - ED visit + SCS use (+/-20%)","Disutility of severe exacerbation - Hospitalization (+/-20%)","Utility - Non-exacerbation (+/-20%)")
   
   df$Parameter <- dsa_names
   # get order of parameters according to size of intervals
@@ -1939,39 +2423,177 @@ write_csv(table_markov_spread,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and 
 ```
 ```{r, microsimulation}
 ##################################### Run the simulation ##################################
-sim_no_trt  <- MicroSim(v.M_1, n.i, n.t, v.n, d.c, d.e) # run for no treatment
-sim_trt     <- MicroSim(v.M_1, n.i, n.t, v.n, d.c, d.e, Trt = TRUE)  # run for treatment
+p = Sys.time()
+sim_no_trt  <- MicroSim(v.M_1, n.i, n.t, v.n, d.c, d.e, Trt=F, seed=1996) # run for no treatment
+comp.time = Sys.time() - p
+comp.time
+
+p = Sys.time()
+sim_PRIM  <- MicroSim(v.M_1, n.i, n.t, v.n, d.c, d.e, Trt="primatene", seed=1996) # run for no treatment
+comp.time = Sys.time() - p
+comp.time
+
+p = Sys.time()
+sim_SYMB  <- MicroSim(v.M_1, n.i, n.t, v.n, d.c, d.e, Trt="symbicort", seed=1996) # run for no treatment
+comp.time = Sys.time() - p
+comp.time
+
+simStore<-function(df){
+  
+  d<-cbind(df$tc,df$te)
+  colnames(d)<-c("tc","te")
+  return(d)
+}
+simStore2<-function(df){
+  ad<-sum(sum(df[["TS"]]=="SCS->D"),sum(df[["TS"]]=="ED->D"),sum(df[["TS"]]=="Hosp->D"))
+  
+  v <- c(df$tc_hat, df$te_hat, ad)
+  
+}
+
+#Matrix calculations
+nt_agg <- as.data.frame(rowSums(sim_no_trt[["m.M"]] =="H0C" | sim_no_trt[["m.M"]] =="H1C")*7)
+nt_agg$exac <- rowSums(sim_no_trt[["m.M"]] =="SCS" | sim_no_trt[["m.M"]] =="ED" | sim_no_trt[["m.M"]] =="Hosp")
+  colnames(nt_agg) <- c("control","exac")
+  apply(nt_agg,2,mean)
+  s.d<-apply(nt_agg,2,sd)
+  s.d/sqrt(n.i)
+
+nt1<-simStore(sim_no_trt)
+nt2<-simStore2(sim_no_trt)
+write.csv(nt1,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\nt1.csv")
+write.csv(nt2,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\nt2.csv")
+write.csv(nt_agg, "C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\nt_EC.csv")
+
+#Matrix calculations
+prim_agg <- as.data.frame(rowSums(sim_PRIM[["m.M"]] =="H0C" | sim_PRIM[["m.M"]] =="H1C")*7)
+prim_agg$exac <- rowSums(sim_PRIM[["m.M"]] =="SCS" | sim_PRIM[["m.M"]] =="ED" | sim_PRIM[["m.M"]] =="Hosp")
+  colnames(prim_agg) <- c("control","exac")
+  apply(prim_agg,2,mean)
+  s.d<-apply(prim_agg,2,sd)
+  s.d/sqrt(n.i)
+
+p1<-simStore(sim_PRIM)
+p2<-simStore2(sim_PRIM)
+write.csv(p1,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\p1.csv")
+write.csv(p2,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\p2.csv")
+write.csv(prim_agg, "C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\prim_EC.csv")
+
+
+#Matrix calculations
+symb_agg <- as.data.frame(rowSums(sim_SYMB[["m.M"]] =="H0C" | sim_SYMB[["m.M"]] =="H1C")*7)
+symb_agg$exac <- rowSums(sim_SYMB[["m.M"]] =="SCS" | sim_SYMB[["m.M"]] =="ED" | sim_SYMB[["m.M"]] =="Hosp")
+  colnames(symb_agg) <- c("control","exac")
+  apply(symb_agg,2,mean)
+  s.d<-apply(symb_agg,2,sd)
+  s.d/sqrt(n.i)
+  
+s1<-simStore(sim_SYMB)
+s2<-simStore2(sim_SYMB)
+write.csv(s1,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\s1.csv")
+write.csv(s2,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\s2.csv")
+write.csv(symb_agg, "C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\symb_EC.csv")
+
+
+
 ################################# Cost-effectiveness analysis #############################
 
 # store the mean costs (and the MCSE) of each strategy in a new variable v.C (vector costs)
-v.C  <- c(sim_no_trt$tc_hat, sim_trt$tc_hat) 
-se.C <- c(sd(sim_no_trt$tc), sd(sim_trt$tc)) / sqrt(n.i)
-# store the mean QALYs (and the MCSE) of each strategy in a new variable v.E (vector health outcomes)
-v.E  <- c(sim_no_trt$te_hat, sim_trt$te_hat)
-se.E <- c(sd(sim_no_trt$te), sd(sim_trt$te)) / sqrt(n.i)
+v.C  <- c(sim_no_trt$tc_hat, sim_PRIM$tc_hat, sim_SYMB$tc_hat) 
+se.C <- c(sd(sim_no_trt$tc), sd(sim_PRIM$tc),sd(sim_SYMB$tc)) / sqrt(n.i)
 
-delta.C <- v.C[2] - v.C[1]                   # calculate incremental costs
-delta.E <- v.E[2] - v.E[1]                   # calculate incremental QALYs
-se.delta.E <- sd(sim_trt$te - sim_no_trt$te) / sqrt(n.i) # Monte Carlo squared error (MCSE) of incremental costs
-se.delta.C <- sd(sim_trt$tc - sim_no_trt$tc) / sqrt(n.i) # Monte Carlo squared error (MCSE) of incremental QALYs
-ICER    <- delta.C / delta.E                 # calculate the ICER
-results <- c(delta.C, delta.E, ICER)         # store the values in a new variable
+# store the mean QALYs (and the MCSE) of each strategy in a new variable v.E (vector health outcomes)
+v.E  <- c(sim_no_trt$te_hat, sim_PRIM$te_hat, sim_SYMB$te_hat) 
+se.E <- c(sd(sim_no_trt$te), sd(sim_PRIM$te),sd(sim_SYMB$te)) / sqrt(n.i)
+
+v.ad <- c(sum(sum(sim_no_trt[["TS"]]=="SCS->D"),sum(sim_no_trt[["TS"]]=="ED->D"),sum(sim_no_trt[["TS"]]=="Hosp->D")),
+          sum(sum(sim_PRIM[["TS"]]=="SCS->D"),sum(sim_PRIM[["TS"]]=="ED->D"),sum(sim_PRIM[["TS"]]=="Hosp->D")),
+          sum(sum(sim_SYMB[["TS"]]=="SCS->D"),sum(sim_SYMB[["TS"]]=="ED->D"),sum(sim_SYMB[["TS"]]=="Hosp->D"))
+          )
+
+v.ac <- c(sum(sim_no_trt[["tc"]]), sum(sim_PRIM[["tc"]]), sum(sim_SYMB[["tc"]])) 
+
+#incremental 
+delta.CN <- v.C[1] - v.C[2]                   # calculate incremental costs
+delta.EN <- v.E[1] - v.E[2]                   # calculate incremental QALYs
+delta.CS <- v.C[3] - v.C[2]                   # calculate incremental costs
+delta.ES <- v.E[3] - v.E[2]                   # calculate incremental QALYs
+
+se.delta.EN <- sd(sim_no_trt$te - sim_PRIM$te) / sqrt(n.i) # Monte Carlo squared error (MCSE) of incremental costs
+se.delta.CN <- sd(sim_no_trt$tc - sim_PRIM$tc) / sqrt(n.i) # Monte Carlo squared error (MCSE) of incremental QALYs
+se.delta.ES <- sd(sim_SYMB$te - sim_PRIM$te) / sqrt(n.i) # Monte Carlo squared error (MCSE) of incremental costs
+se.delta.CS <- sd(sim_SYMB$tc - sim_PRIM$tc) / sqrt(n.i) # Monte Carlo squared error (MCSE) of incremental QALYs
+
+ICER.N    <- delta.CN / delta.EN                 # calculate the ICER
+ICER.S    <- delta.CS / delta.ES  
+
+# results <- c(delta.C, delta.E, ICER)         # store the values in a new variable
 
 # Create full incremental cost-effectiveness analysis table
 table_micro <- data.frame(
   c(round(v.C, 0),  ""),           # costs per arm
   c(round(se.C, 0), ""),           # MCSE for costs
-  c(round(v.E, 3),  ""),           # health outcomes per arm
-  c(round(se.E, 3), ""),           # MCSE for health outcomes
-  c("", round(delta.C, 0),   ""),  # incremental costs
-  c("", round(se.delta.C, 0),""),  # MCSE for incremental costs
-  c("", round(delta.E, 3),   ""),  # incremental QALYs 
-  c("", round(se.delta.E, 3),""),  # MCSE for health outcomes (QALYs) gained
-  c("", round(ICER, 0),      "")   # ICER
+  c(round(v.E, 6),  ""),           # health outcomes per arm
+  c(round(se.E, 6), ""),           # MCSE for health outcomes
+  c(round(delta.CN,0),  "",  round(delta.CS,0),""),  # incremental costs
+  c(round(se.delta.CN, 0),"" ,round(se.delta.CS, 0),""),  # MCSE for incremental costs
+  c(round(delta.EN, 6),"" ,round(delta.ES, 6),""),  # incremental QALYs 
+  c(round(se.delta.EN, 6),"" ,round(se.delta.ES, 6),""),  # MCSE for health outcomes (QALYs) gained
+  c(round(ICER.N, 0),"",round(ICER.S, 0),""),   # ICER
+  c(v.ad,""), #asthma deaths
+  c(v.ac,"") #total costs
 )
 rownames(table_micro) <- c(v.Trt, "* are MCSE values")  # name the rows
-colnames(table_micro) <- c("Costs", "*",  "QALYs", "*", "Incremental Costs", "*", "QALYs Gained", "*", "ICER") # name the columns
+colnames(table_micro) <- c("Costs", "*",  "QALYs", "*", "Incremental Costs", "*", "QALYs Gained", "*", "ICER", "Asthma death","total costs") # name the columns
 table_micro  # print the table 
+
+write.csv(table_micro,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\microResults.csv")
+
+
+####
+
+#cost and qaly dataset
+sim_no_trt <- read_csv("C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Preliminary results/nt1.csv")
+sim_PRIM <- read_csv("C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Preliminary results/p1.csv")
+sim_SYMB <- read_csv("C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Preliminary results/s1.csv")
+
+#Exac and control dataset
+sim_no_trt_EC <- read_csv("C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Preliminary results/nt_EC.csv")
+sim_PRIM_EC <- read_csv("C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Preliminary results/prim_EC.csv")
+sim_SYMB_EC <- read_csv("C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Preliminary results/symb_EC.csv")
+
+
+
+se.C <- c(sd(sim_no_trt$tc), sd(sim_PRIM$tc),sd(sim_SYMB$tc)) / sqrt(n.i) #SD cost
+
+se.E <- c(sd(sim_no_trt$te), sd(sim_PRIM$te),sd(sim_SYMB$te)) / sqrt(n.i) #SD qalys
+
+## total results for microsim
+ext<- 52.5
+
+##total costs
+totC<-c(sum(sim_no_trt$tc),sum(sim_PRIM$tc),sum(sim_SYMB$tc))
+totC_pop<-totC*ext
+totC_pop[2] - totC_pop[3]
+
+##total deaths
+ad<-c(352,486,248)/100000 #asthma fatality
+ad[2] - ad[3]
+
+SE <- sqrt((ad*(1-ad)/100000))
+
+##total exac
+totE<-c(sum(sim_no_trt_EC$exac),sum(sim_PRIM_EC$exac),sum(sim_SYMB_EC$exac))
+totE_pop <- totE*ext 
+totE_pop[2] - totE_pop[3]
+
+
+exac_symb<-sum(sim_SYMB[["m.M"]]=="SCS")+sum(sim_SYMB[["m.M"]]=="ED")+sum(sim_SYMB[["m.M"]]=="Hosp")
+exac_symb*5250000
+
+
+
+
 ```
 
 ```{r, NMB for symbicort}
@@ -2282,7 +2904,7 @@ params <- f_gen_base()
 list2env(as.list(params), envir=globalenv())
 
 
-n.t   <- 52*77             # time horizon, lifetime from 23yrs, 1 week cycle
+n.t   <- 4006           # time horizon, lifetime from 23yrs, 1 week cycle - 77 years and 1 week
     
     v.n   <- c("H0C","H0NC", #H0 no hcp mgt
                "H1C", "H1NC", #H1 HCP MGT
@@ -2297,28 +2919,11 @@ n.t   <- 52*77             # time horizon, lifetime from 23yrs, 1 week cycle
                "Primatene", 
                "Symbicort")       # store the strategy names
 
-sim_base_no_trt  <- Markov(params, v.M_1, n.t, v.n, d.c, d.e)
-sim_base_PRIM    <- Markov(params, v.M_1, n.t, v.n, d.c, d.e,trt="primatene")
-sim_base_SYMB    <- Markov(params, v.M_1, n.t, v.n, d.c, d.e,trt="symbicort")  
+sim_base_no_trt  <- Markov(params, v.M_1, n.t, v.n, d.c, d.e, res=T)
+sim_base_PRIM    <- Markov(params, v.M_1, n.t, v.n, d.c, d.e,trt="primatene", res=T)
+sim_base_SYMB    <- Markov(params, v.M_1, n.t, v.n, d.c, d.e,trt="symbicort", res=T)  
 
 
-#Microsim
-n=7000000
-nm=5250000
 
-msim <- data.frame(strategy=c("Symbicort","No OTC","Primatene"),
-                   Costs.n=c(sim_base_SYMB[["tc_hat"]],sim_base_no_trt[["tc_hat"]],sim_base_PRIM[["tc_hat"]])*n,
-                   Costs.nm=c(sim_base_SYMB[["tc_hat"]],sim_base_no_trt[["tc_hat"]],sim_base_PRIM[["tc_hat"]])*nm,
-                   QALYs.n=c(sim_base_SYMB[["te_hat"]],sim_base_no_trt[["te_hat"]],sim_base_PRIM[["te_hat"]])*n,
-                   QALYs.nm=c(sim_base_SYMB[["te_hat"]],sim_base_no_trt[["te_hat"]],sim_base_PRIM[["te_hat"]])*nm,
-                   Exac.n=c(sim_base_SYMB[["severe_exac"]],sim_base_no_trt[["severe_exac"]],sim_base_PRIM[["severe_exac"]])*n,
-                   Exac.nm=c(sim_base_SYMB[["severe_exac"]],sim_base_no_trt[["severe_exac"]],sim_base_PRIM[["severe_exac"]])*nm,
-                   Control.n=c(sim_base_SYMB[["controlled"]],sim_base_no_trt[["controlled"]],sim_base_PRIM[["controlled"]])*n,
-                   Control.nm=c(sim_base_SYMB[["controlled"]],sim_base_no_trt[["controlled"]],sim_base_PRIM[["controlled"]])*nm,
-                   Death.n=c(sim_base_SYMB[["asthma_death"]],sim_base_no_trt[["asthma_death"]],sim_base_PRIM[["asthma_death"]])*n,
-                   Death.nm=c(sim_base_SYMB[["asthma_death"]],sim_base_no_trt[["asthma_death"]],sim_base_PRIM[["asthma_death"]])*nm                
-                   )
-
-write_csv(msim, "C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Manuscript/Figures/msim.csv")
 ```
 
