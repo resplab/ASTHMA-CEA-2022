@@ -2146,16 +2146,16 @@ sym_noTrt <- CEA_plot(data = resw, x = resw$deltaSN_QALYs, y = resw$deltaSN_Cost
 noTrt_prim <- CEA_plot(data = resw, x = resw$deltaNP_QALYs, y = resw$deltaNP_Costs, xlab="Incremental QALY", ylab = "Incremental Cost")
 
 theme_set(theme_pubr())
-y <- ggarrange(sym_prim,sym_noTrt,noTrt_prim,
+z <- ggarrange(sym_prim,sym_noTrt,noTrt_prim,
                ncol=1,
                nrow=3,
                labels =c('A','B','C'))
 
-ggsave("CEA_plotv3.png", plot=y, 
+ggsave("CEA_plotv3.jpeg", plot=z, 
        path="C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Manuscript/Figures",
        width= 7,
-       height= 11,
-       dpi = 1000)  
+       height= 9,
+       dpi = 100)  
 
 
 

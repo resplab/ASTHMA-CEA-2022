@@ -1354,11 +1354,11 @@ y <- ggarrange(a[[2]],b[[2]],
                labels =c('A','B'),
                legend = 'bottom') 
 
-ggsave("tornado.png", plot=y, 
+ggsave("tornado.jpeg", plot=y, 
        path="C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Manuscript/Figures",
-       width= 11,
-       height= 11,
-       dpi = 1000)
+       width= 7,
+       height= 8,
+       dpi = 100)
 
 #INMB @ WTP 150k, 50k
 SP150 <- tornado_plot(SP,wtp=150000)
