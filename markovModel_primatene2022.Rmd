@@ -307,6 +307,8 @@ f_gen_dsa <- function(n_sim = 2,
   r.H1_SEVtot <- 0.09 #syg1
   if(DSA=="r.H1"){r.H1_SEVtot <- 0.09*r}
 
+  if(DSA=="adh.sym"){r.SYM_SEVtot <- (0.11*c(1, 0.8)) + 0.20*c(0,0.2)}
+  
     #Rate of exacerbation by control group
     #controlled (C)
     r.H0C_SEV <- r.H0_SEVtot/(p.H0_AC + RR.NC - RR.NC*p.H0_AC) #yaghoubi et al.2020
@@ -373,6 +375,8 @@ f_gen_dsa <- function(n_sim = 2,
     
     inh.SYM <- 0.52
     if(DSA=="inh.SYM"){inh.SYM <- 0.52*r}
+    if(DSA=="adh.sym"){inh.SYM <- (0.52*c(1, 0.8)) + 0*c(0, 0.2)}
+
     
     inh.ICS <- 2
     if(DSA=="inh.ICS"){inh.ICS <- 2*r}
@@ -413,7 +417,7 @@ f_gen_dsa <- function(n_sim = 2,
 
   
   u.H0 <- 0.87/52          # utility of non-exacerbation
-  if(DSA=="u.H0"){u.H0 <- c(0.87/52*0.8, 1)}
+  if(DSA=="u.H0"){u.H0 <- c(0.87/52*0.8, 0.87/52*1)}
   u.H1 <- u.H0
   u.SCS <- u.H0 + du.SCS     # utility of SCS
   u.ED  <- u.H0 + du.ED        # utility of emergency deparment 
@@ -512,7 +516,7 @@ dsa_params<-c("H0_H1","H1_H0",
                "r.H0","r.SYM", "r.H1",
                "HCP","AU","SCS","ED","Hosp",
                "inh.PRIM","inh.SYM","inh.ICS","inh.SABA",
-               "du.AU","du.SCS","du.ED","du.Hosp","u.H0")
+               "du.AU","du.SCS","du.ED","du.Hosp","u.H0", "adh.sym")
 
 
 ```
@@ -1169,7 +1173,7 @@ return(results)  # return the results
 ### Wrapper <- probablistic function
   f_wrapper <- function(fxn=f_gen_base(),
                         n_sim = 1000,
-                        n.t = 4006, #77 years and 1 week
+                        n.t = 4213, #81 years and 1 week
                         d.c = (0.03/52),
                         trt=FALSE,
                         res=F){
@@ -1233,7 +1237,7 @@ return(results)  # return the results
 
 ### Analysis ###
 ```{r, Base Case Analysis and Results}
-m <- read_csv("mortality.csv")
+m <- read_csv("mortality19.csv")
 mort.list <- list(m)
 
 ################################# Cost-effectiveness analysis #############################
@@ -1264,7 +1268,7 @@ summary_markov <- function(df, wtp=100000){
 table_markov <- summary_markov(res)
 
 t<-as_tibble(as.matrix(table_markov))
-write.csv(t,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\BaseResults.csv")
+write.csv(t,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\BaseResults19.csv")
 
 ```
 ```{r, Probablistic}
@@ -1272,7 +1276,7 @@ write.csv(t,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\Asth
   set.seed(1996) #reproducible results
   psa <- f_gen_psa(n_sim=1000) #PSA sheet
   mort.fxn <- function(){
-        mortality <- read_csv("mortality.csv") %>% select(-pSp.SCS_AF,-pSp.ED_AF,-pSp.HOSP_AF)
+        mortality <- read_csv("mortality19.csv") %>% select(-pSp.SCS_AF,-pSp.ED_AF,-pSp.HOSP_AF)
     m <- rep(list(mortality),1000)
     ORF <- function(df, OR.AF = 2.6) {
         OR.AF <- OR.AF
@@ -1310,8 +1314,8 @@ sim_PSA_SYMB    <- f_wrapper(fxn=psa, n_sim=1000, trt="symbicort")
   
   res <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB) 
   
-  # write_csv(res,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\PSAResults_ALLv4.csv")
-  # write_csv(psa,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\PSAParams_ALLv4.csv")
+  # write_csv(res,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\PSAResults_ALL19.csv")
+  # write_csv(psa,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\PSAParams_ALL19.csv")
 
 
 ```
@@ -1320,7 +1324,7 @@ sim_PSA_SYMB    <- f_wrapper(fxn=psa, n_sim=1000, trt="symbicort")
   set.seed(1996) #reproducible results
   psa <- f_gen_psa(n_sim=1000) #PSA sheet
   mort.fxn <- function(){
-        mortality <- read_csv("mortality.csv") %>% select(-pSp.SCS_AF,-pSp.ED_AF,-pSp.HOSP_AF)
+        mortality <- read_csv("mortality19.csv") %>% select(-pSp.SCS_AF,-pSp.ED_AF,-pSp.HOSP_AF)
     m <- rep(list(mortality),1000)
     ORF <- function(df, OR.AF = 2.6) {
         OR.AF <- OR.AF
@@ -1356,7 +1360,7 @@ sim_PSA_SYMB    <- f_wrapper(fxn=psa, n_sim=1000, trt="symbicort")
     
     res_dc0 <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB)
     
-  # write_csv(res_dc0,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\scenario_dc0.csv")
+  # write_csv(res_dc0,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\scenario19_dc0.csv")
 
 
   #6.0%
@@ -1370,7 +1374,7 @@ sim_PSA_SYMB    <- f_wrapper(fxn=psa, n_sim=1000, trt="symbicort")
     
     res_dc6<- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB) 
   
-  # write_csv(res_dc6,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\scenario_dc6.csv")
+  # write_csv(res_dc6,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\scenario19_dc6.csv")
 
 
 ##Time Horizon##
@@ -1385,7 +1389,7 @@ sim_PSA_SYMB    <- f_wrapper(fxn=psa, n_sim=1000, trt="symbicort")
     
     res_th10 <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB)
   
-  # write_csv(res_th10,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\scenario_th10.csv")
+  # write_csv(res_th10,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\scenario19_th10.csv")
   
   # 30 years
   sim_PSA_no_trt  <- f_wrapper(fxn=psa, n.t = (30*52), n_sim=1000)
@@ -1398,7 +1402,7 @@ sim_PSA_SYMB    <- f_wrapper(fxn=psa, n_sim=1000, trt="symbicort")
     
     res_th30 <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB)
     
-  # write_csv(res_th30,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\scenario_th30.csv")
+  # write_csv(res_th30,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\scenario19_th30.csv")
 
     
 #Payer Perspective
@@ -1415,7 +1419,7 @@ sim_PSA_SYMB    <- f_wrapper(fxn=psa, n_sim=1000, trt="symbicort")
     
     res_public <- rbind(sim_PSA_no_trt, sim_PSA_PRIM, sim_PSA_SYMB)
     
-  # write_csv(res_public,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\scenario_public.csv")
+  # write_csv(res_public,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\scenario19_public.csv")
 
 
 ```
@@ -1427,7 +1431,7 @@ sim_PSA_SYMB    <- f_wrapper(fxn=psa, n_sim=1000, trt="symbicort")
 
 
 #mortality setup
-  m <- read_csv("mortality.csv")
+  m <- read_csv("mortality19.csv")
   mort.list <- rep(list(m),nrow(dsa))
 
 ################################# Cost-effectiveness analysis #############################
@@ -1443,7 +1447,7 @@ dsa_setup <- function(df,title){
                "r.H0","r.SYM", "r.H1",
                "HCP","AU","SCS","ED","Hosp",
                "inh.PRIM","inh.SYM","inh.ICS","inh.SABA",
-               "du.AU","du.SCS","du.ED","du.Hosp","u.H0")
+               "du.AU","du.SCS","du.ED","du.Hosp","u.H0", "adh.sym")
   
   ID <- 1:nrow(df)
   parameter <- rep(dsa_params,each=2)
@@ -1459,13 +1463,13 @@ dsa_setup <- function(df,title){
   sim_base_SYMB    <- dsa_setup(sim_base_SYMB, "SYMB")
 
   res <- rbind(sim_base_no_trt,sim_base_PRIM,sim_base_SYMB)
-  write_csv(res,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\DSAResults.csv")
+  # write_csv(res,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\DSAResults19.csv")
   
 ```
 ```{r, microsimulation}
 # Model input
 n.i   <- 100000              # number of simulated individuals
-n.t   <- 4006             # time horizon
+n.t   <- 4213                # time horizon
 v.n   <- c("H0C","H0NC", #H0 no hcp mgt
                "H1C", "H1NC", #H1 HCP MGT
                "SCS","ED","Hosp", "SEVR", #SEV exacerbation
@@ -1723,7 +1727,7 @@ MicroSim <- function(v.M_1, n.i, n.t, v.n, d.c, d.e, TR.out = TRUE, TS.out = TRU
   v.dwc <- 1 / (1 + d.c) ^ (0:(n.t-1))   # calculate the cost discount weight based on the discount rate d.c, minus 1 to exclude cycle 0 
   v.dwe <- 1 / (1 + d.e) ^ (0:(n.t-1))   # calculate the QALY discount weight based on the discount rate d.e, minus 1 to exclude cycle 0 
   
-  mortality <- read_csv("mortality.csv") #running in mortality sheet
+  mortality <- read_csv("mortality19.csv") #running in mortality sheet
   params <- f_gen_base() #running in parameter sheet
   # list2env(as.list(params), envir=globalenv()) #parameter to environment
   
@@ -2081,7 +2085,7 @@ Effs <- function (M_it, cl = 1) {
 ### Plotting and Results ###
 ```{r, PSA CEA plotting}
 #Importing data
-res <- read_csv("C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\PSAResults_ALLv4.csv")
+res <- read_csv("C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\PSAResults_ALL19.csv")
 res$ID <- rep(1:1000,3)
 
 
@@ -2151,7 +2155,7 @@ z <- ggarrange(sym_prim,sym_noTrt,noTrt_prim,
                nrow=3,
                labels =c('A','B','C'))
 
-ggsave("CEA_plotv3.jpeg", plot=z, 
+ggsave("CEA_plotv3_19.jpeg", plot=z, 
        path="C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Manuscript/Figures",
        width= 7,
        height= 9,
@@ -2199,7 +2203,7 @@ ggsave("CEA_plotv3.jpeg", plot=z,
   
 
 
-#CEAC
+### Cost-effectiveness acceptability curve (CEAC) ###
   CEAC <- function(costs, qalys, title=NULL){
   
     WTP <- seq(from=0, to=150000, by=10000)
@@ -2291,7 +2295,7 @@ y <- ggarrange(a,b,c,
                labels =c('A','B',"C")) 
 
 
-ggsave("CEAC_plot2.png", plot=y,
+ggsave("CEAC_plot2_19.png", plot=y,
        path="C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Manuscript/Figures",
        width= 7,
        height= 11,
@@ -2332,10 +2336,16 @@ tornado_plot <- function(df, wtp=100000){
   base.value <- df$Lower_Bound[1] #basecase value: when H0 to H1 is 0
   
   dsa_names<-c("Annual probability - Transitioning from no HCP to HCP (0%,20%)","Annual probability - Non-adherence to HCP (+/-20%)",
-             "Annual rate of severe exacerbation - No OTC inhaler/IE (+/-20%)","Annual rate of severe exacerbation - Bud-form (+/-20%)", "Annual rate of severe exacerbation - HCP (+/-20%)",
-             "Cost - HCP management (+/-20%)","Cost - Asthma not well-controlled day (+/-20%)","Cost of severe exacerbation - SCS use (+/-20%)","Cost of severe exacerbation - ED visit + SCS use (+/-20%)","Cost of severe exacerbation - Hospitalization (+/-20%)",
+             "Annual rate of severe exacerbation - No OTC inhaler/IE (+/-20%)","Annual rate of severe exacerbation - Bud-form (+/-20%)", 
+             "Annual rate of severe exacerbation - HCP (+/-20%)",
+             "Cost - HCP management (+/-20%)","Cost - Asthma not well-controlled day (+/-20%)","Cost of severe exacerbation - SCS use (+/-20%)",
+             "Cost of severe exacerbation - ED visit + SCS use (+/-20%)","Cost of severe exacerbation - Hospitalization (+/-20%)",
              "Inhalations per day - IE (+/-20%)","Inhalations per day - Bud-form (+/-20%)","Inhalations per day - ICS (+/-20%)","Inhalations per day - SABA (+/-20%)",
-             "Disutility - Asthma not well-controlled day (+/-20%)","Disutility of severe exacerbation - SCS use (+/-20%)","Disutility of severe exacerbation - ED visit + SCS use (+/-20%)","Disutility of severe exacerbation - Hospitalization (+/-20%)","Utility - Non-exacerbation (+/-20%)")
+             "Disutility - Asthma not well-controlled day (+/-20%)","Disutility of severe exacerbation - SCS use (+/-20%)",
+             "Disutility of severe exacerbation - ED visit + SCS use (+/-20%)",
+             "Disutility of severe exacerbation - Hospitalization (+/-20%)",
+             "Utility - Non-exacerbation (+/-20%)",
+             "Non-adherence - Bud-form (0%,20%)")
   
   df$Parameter <- dsa_names
   # get order of parameters according to size of intervals
@@ -2377,13 +2387,15 @@ list(df,p)
 SP<-tornado_plot(SP)
 NP<-tornado_plot(NP)
 
+ggsave()
+
 ```
 ```{r, Scenario analysis}
-res_dc0 <- read_csv("C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\scenario_dc0.csv")
-res_dc6 <- read_csv("C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\scenario_dc6.csv")
-res_th10 <- read_csv("C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\scenario_th10.csv")
-res_th30 <- read_csv("C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\scenario_th30.csv")
-res_public <- read_csv("C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\scenario_public.csv")
+res_dc0 <- read_csv("C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\scenario19_dc0.csv")
+res_dc6 <- read_csv("C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\scenario19_dc6.csv")
+res_th10 <- read_csv("C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\scenario19_th10.csv")
+res_th30 <- read_csv("C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\scenario19_th30.csv")
+res_public <- read_csv("C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\scenario19_public.csv")
 
 scen <- list(dc0=res_dc0,dc6=res_dc6,th10=res_th10,th30=res_th30,public=res_public) #creating list of scenario results
 ID <- function(df){
@@ -2417,12 +2429,12 @@ names<-c("dc0","dc6","th10", "th30", "public") %>% rep(each=3) # applying names 
   
 table_markov_spread <- table_markov_spread %>% group_by(ID) %>% arrange(desc(INMB), .by_group = T)
   
-write_csv(table_markov_spread,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\ScenResults.csv")
+write_csv(table_markov_spread,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\ScenResults19.csv")
 
 
 ```
 ```{r, microsimulation}
-##################################### Run the simulation ##################################
+###### Run the simulation ######
 p = Sys.time()
 sim_no_trt  <- MicroSim(v.M_1, n.i, n.t, v.n, d.c, d.e, Trt=F, seed=1996) # run for no treatment
 comp.time = Sys.time() - p
@@ -2451,7 +2463,7 @@ simStore2<-function(df){
   
 }
 
-#Matrix calculations
+#Matrix calculations for no treatment
 nt_agg <- as.data.frame(rowSums(sim_no_trt[["m.M"]] =="H0C" | sim_no_trt[["m.M"]] =="H1C")*7)
 nt_agg$exac <- rowSums(sim_no_trt[["m.M"]] =="SCS" | sim_no_trt[["m.M"]] =="ED" | sim_no_trt[["m.M"]] =="Hosp")
   colnames(nt_agg) <- c("control","exac")
@@ -2461,9 +2473,9 @@ nt_agg$exac <- rowSums(sim_no_trt[["m.M"]] =="SCS" | sim_no_trt[["m.M"]] =="ED" 
 
 nt1<-simStore(sim_no_trt)
 nt2<-simStore2(sim_no_trt)
-write.csv(nt1,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\nt1.csv")
-write.csv(nt2,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\nt2.csv")
-write.csv(nt_agg, "C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\nt_EC.csv")
+write.csv(nt1,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\nt1_19.csv")
+write.csv(nt2,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\nt2_19.csv")
+write.csv(nt_agg, "C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\nt_EC_19.csv")
 
 #Matrix calculations
 prim_agg <- as.data.frame(rowSums(sim_PRIM[["m.M"]] =="H0C" | sim_PRIM[["m.M"]] =="H1C")*7)
@@ -2475,9 +2487,9 @@ prim_agg$exac <- rowSums(sim_PRIM[["m.M"]] =="SCS" | sim_PRIM[["m.M"]] =="ED" | 
 
 p1<-simStore(sim_PRIM)
 p2<-simStore2(sim_PRIM)
-write.csv(p1,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\p1.csv")
-write.csv(p2,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\p2.csv")
-write.csv(prim_agg, "C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\prim_EC.csv")
+write.csv(p1,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\p1_19.csv")
+write.csv(p2,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\p2_19.csv")
+write.csv(prim_agg, "C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\prim_EC_19.csv")
 
 
 #Matrix calculations
@@ -2490,13 +2502,13 @@ symb_agg$exac <- rowSums(sim_SYMB[["m.M"]] =="SCS" | sim_SYMB[["m.M"]] =="ED" | 
   
 s1<-simStore(sim_SYMB)
 s2<-simStore2(sim_SYMB)
-write.csv(s1,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\s1.csv")
-write.csv(s2,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\s2.csv")
-write.csv(symb_agg, "C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\symb_EC.csv")
+write.csv(s1,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\s1_19.csv")
+write.csv(s2,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\s2_19.csv")
+write.csv(symb_agg, "C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\symb_EC_19.csv")
 
 
 
-################################# Cost-effectiveness analysis #############################
+###### Cost-effectiveness analysis ######
 
 # store the mean costs (and the MCSE) of each strategy in a new variable v.C (vector costs)
 v.C  <- c(sim_no_trt$tc_hat, sim_PRIM$tc_hat, sim_SYMB$tc_hat) 
@@ -2550,49 +2562,63 @@ table_micro  # print the table
 write.csv(table_micro,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\microResults.csv")
 
 
-####
+###### Cost-effectiveness analysis using imported dataset ######
 
 #cost and qaly dataset
-sim_no_trt <- read_csv("C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Preliminary results/nt1.csv")
-sim_PRIM <- read_csv("C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Preliminary results/p1.csv")
-sim_SYMB <- read_csv("C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Preliminary results/s1.csv")
+sim_no_trt <- read_csv("C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Preliminary results/nt1_19.csv")
+sim_PRIM <- read_csv("C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Preliminary results/p1_19.csv")
+sim_SYMB <- read_csv("C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Preliminary results/s1_19.csv")
 
 #Exac and control dataset
-sim_no_trt_EC <- read_csv("C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Preliminary results/nt_EC.csv")
-sim_PRIM_EC <- read_csv("C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Preliminary results/prim_EC.csv")
-sim_SYMB_EC <- read_csv("C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Preliminary results/symb_EC.csv")
+sim_no_trt_EC <- read_csv("C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Preliminary results/nt_EC_19.csv")
+sim_PRIM_EC <- read_csv("C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Preliminary results/prim_EC_19.csv")
+sim_SYMB_EC <- read_csv("C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Preliminary results/symb_EC_19.csv")
+
+#Asthma-Death dataset
+sim_no_trt_D <- read_csv("C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Preliminary results/nt2_19.csv")
+sim_PRIM_D <- read_csv("C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Preliminary results/p2_19.csv")
+sim_SYMB_D <- read_csv("C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Preliminary results/s2_19.csv")
 
 
+## microsim values
+n.i <- 100000
+trt <- c('noTrt', 'PRIM', 'SYMB')
 
+## calculating mean 
+m.C <- c(mean(sim_no_trt$tc), mean(sim_PRIM$tc),mean(sim_SYMB$tc)) #mean cost
+m.E <- c(mean(sim_no_trt$te), mean(sim_PRIM$te),mean(sim_SYMB$te)) #mean qalys
+m.CONT <- c(mean(sim_no_trt_EC$control), mean(sim_PRIM_EC$control),mean(sim_SYMB_EC$control)) #mean control days
+m.EXAC <- c(mean(sim_no_trt_EC$exac), mean(sim_PRIM_EC$exac),mean(sim_SYMB_EC$exac)) #mean exac
+m.AD <- c(sim_no_trt_D$x[3],sim_PRIM_D$x[3], sim_SYMB_D$x[3])/n.i #asthma-related deaths
+
+## calculating SE
 se.C <- c(sd(sim_no_trt$tc), sd(sim_PRIM$tc),sd(sim_SYMB$tc)) / sqrt(n.i) #SD cost
-
 se.E <- c(sd(sim_no_trt$te), sd(sim_PRIM$te),sd(sim_SYMB$te)) / sqrt(n.i) #SD qalys
+se.CONT <- c(sd(sim_no_trt_EC$control), sd(sim_PRIM_EC$control),sd(sim_SYMB_EC$control)) / sqrt(n.i) #SD control days
+se.EXAC <- c(sd(sim_no_trt_EC$exac), sd(sim_PRIM_EC$exac),sd(sim_SYMB_EC$exac)) / sqrt(n.i) #SD exac
+se.AD <- sqrt((m.AD*(1-m.AD)/n.i)) #SD asthma-related deaths
+
+### Incremental SE
+sd(sim_SYMB$tc - sim_PRIM$tc)/sqrt(n.i) #Symb vs prim cost
+sd(sim_no_trt$tc - sim_PRIM$tc)/sqrt(n.i) #no trt vs prim cost
+
+sd(sim_SYMB$te - sim_PRIM$te)/sqrt(n.i) #Symb vs prim eff
+sd(sim_no_trt$te - sim_PRIM$te)/sqrt(n.i) #no trt vs prim eff
 
 ## total results for microsim
-ext<- 52.5
+ext <- 52.5
 
-##total costs
-totC<-c(sum(sim_no_trt$tc),sum(sim_PRIM$tc),sum(sim_SYMB$tc))
-totC_pop<-totC*ext
-totC_pop[2] - totC_pop[3]
+totC_pop <- c(sum(sim_no_trt$tc),sum(sim_PRIM$tc),sum(sim_SYMB$tc))*ext # total costs
+totE_pop<-c(sum(sim_no_trt_EC$exac),sum(sim_PRIM_EC$exac),sum(sim_SYMB_EC$exac))*ext # total exac
+totAD_pop <- c(sim_no_trt_D$x[3],sim_PRIM_D$x[3], sim_SYMB_D$x[3])*ext # total deaths
 
-##total deaths
-ad<-c(352,486,248)/100000 #asthma fatality
-ad[2] - ad[3]
-
-SE <- sqrt((ad*(1-ad)/100000))
-
-##total exac
-totE<-c(sum(sim_no_trt_EC$exac),sum(sim_PRIM_EC$exac),sum(sim_SYMB_EC$exac))
-totE_pop <- totE*ext 
-totE_pop[2] - totE_pop[3]
-
-
-exac_symb<-sum(sim_SYMB[["m.M"]]=="SCS")+sum(sim_SYMB[["m.M"]]=="ED")+sum(sim_SYMB[["m.M"]]=="Hosp")
-exac_symb*5250000
-
-
-
+table_micro$totC_pop[3] - table_micro$totC_pop[1] #total incremental cost for SYMB and PRIM
+table_micro$totE_pop[3] - table_micro$totE_pop[1] #total incremental exac for SYMB and PRIM
+table_micro$totAD_pop[3] - table_micro$totAD_pop[1] #total incremental exac for SYMB and PRIM
+  
+## micro table
+table_micro <- data.frame(trt,m.C,se.C,m.E,se.E,m.CONT,se.CONT,m.EXAC,se.EXAC, m.AD, se.AD, totC_pop, totE_pop, totAD_pop) %>% arrange(m.C)
+write.csv(table_micro,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\microResults_v2.csv")
 
 ```
 

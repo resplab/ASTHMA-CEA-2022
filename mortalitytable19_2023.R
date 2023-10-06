@@ -1,6 +1,6 @@
 library(readxl)
 library(dplyr)
-mortality <- read_excel("~/Library/CloudStorage/GoogleDrive-josephkn.ho@gmail.com/Other computers/My Computer/Grad studies MSc and Applications/AsthmaCEA2022/Parameter literature/MortalityTable19.xlsx", 
+mortality <- read_excel("C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Parameter literature/MortalityTable19.xlsx", 
                                             sheet = "Mortality")
 
 mdf <- mortality %>% slice(rep(1:n(),52)) %>% arrange(Age)
@@ -20,4 +20,4 @@ OR <- 2.6
 
 mdf <- mdf %>% select(Age, b_mortality, p.SCS_AF, p.ED_AF, p.HOSP_AF, pSp.SCS_AF, pSp.ED_AF, pSp.HOSP_AF)
 # mdf <- 1 - (1-mdf)^(1/52)
-write.csv(mdf,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\ASTHMA-CEA-2022\\mortality.csv")
+write.csv(mdf,"C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\ASTHMA-CEA-2022v3\\mortality19.csv")

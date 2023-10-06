@@ -1203,7 +1203,7 @@ base_table_markov <- summary_markov(base)
 ```
 
 ```{r, DSA, include = F}
-dsa <- read_csv("C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\DSAResults.csv") 
+dsa <- read_csv("C:\\Users\\Joseph\\Desktop\\Grad studies MSc and Applications\\AsthmaCEA2022\\Preliminary results\\DSAResults19.csv") 
 
 
 #results_wide
@@ -1354,11 +1354,11 @@ y <- ggarrange(a[[2]],b[[2]],
                labels =c('A','B'),
                legend = 'bottom') 
 
-ggsave("tornado.jpeg", plot=y, 
+ggsave("tornado_19.jpeg", plot=y, 
        path="C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Manuscript/Figures",
        width= 7,
        height= 8,
-       dpi = 100)
+       dpi = 300)
 
 #INMB @ WTP 150k, 50k
 SP150 <- tornado_plot(SP,wtp=150000)
@@ -1374,11 +1374,11 @@ tp150 <- ggarrange(SP150[[2]],NP150[[2]],
                labels =c('A','B'),
                legend = 'bottom') 
 
-ggsave("tornado_150.png", plot=tp150, 
+ggsave("tornado_150_19.png", plot=tp150, 
        path="C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Manuscript/Figures",
        width= 11,
        height= 11,
-       dpi = 1000)
+       dpi = 300)
 
 tp50 <- ggarrange(SP50[[2]],NP50[[2]],
                ncol=1,
@@ -1387,11 +1387,11 @@ tp50 <- ggarrange(SP50[[2]],NP50[[2]],
                labels =c('C','D'),
                legend = 'bottom') 
 
-ggsave("tornado_50.png", plot=tp50, 
+ggsave("tornado_50_19.png", plot=tp50, 
        path="C:/Users/Joseph/Desktop/Grad studies MSc and Applications/AsthmaCEA2022/Manuscript/Figures",
        width= 11,
        height= 11,
-       dpi = 1000)
+       dpi = 300)
 
 ```
 
